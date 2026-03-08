@@ -1,21 +1,23 @@
-import { APP_TIMEZONE } from '@/lib/constants'
+import { DEFAULT_TIMEZONE } from '@/lib/constants'
 
 /**
- * Get the current date/time in America/Bogota timezone.
+ * Get the current date/time in the given timezone.
  */
-export function nowBogota(): Date {
+export function nowInTimezone(timezone?: string): Date {
+    const tz = timezone || DEFAULT_TIMEZONE
     return new Date(
-        new Date().toLocaleString('en-US', { timeZone: APP_TIMEZONE })
+        new Date().toLocaleString('en-US', { timeZone: tz })
     )
 }
 
 /**
- * Format a date to a localized Colombian string.
+ * Format a date to a localized string in the given timezone.
  */
-export function formatDateCO(date: Date | string, options?: Intl.DateTimeFormatOptions): string {
+export function formatDate(date: Date | string, timezone?: string, options?: Intl.DateTimeFormatOptions): string {
+    const tz = timezone || DEFAULT_TIMEZONE
     const d = typeof date === 'string' ? new Date(date) : date
     return d.toLocaleDateString('es-CO', {
-        timeZone: APP_TIMEZONE,
+        timeZone: tz,
         year: 'numeric',
         month: 'long',
         day: 'numeric',
@@ -24,12 +26,13 @@ export function formatDateCO(date: Date | string, options?: Intl.DateTimeFormatO
 }
 
 /**
- * Format a time to a localized Colombian string.
+ * Format a time to a localized string in the given timezone.
  */
-export function formatTimeCO(date: Date | string): string {
+export function formatTime(date: Date | string, timezone?: string): string {
+    const tz = timezone || DEFAULT_TIMEZONE
     const d = typeof date === 'string' ? new Date(date) : date
     return d.toLocaleTimeString('es-CO', {
-        timeZone: APP_TIMEZONE,
+        timeZone: tz,
         hour: '2-digit',
         minute: '2-digit',
         hour12: true,
@@ -37,12 +40,13 @@ export function formatTimeCO(date: Date | string): string {
 }
 
 /**
- * Format a datetime to a localized Colombian string.
+ * Format a datetime to a localized string in the given timezone.
  */
-export function formatDateTimeCO(date: Date | string): string {
+export function formatDateTime(date: Date | string, timezone?: string): string {
+    const tz = timezone || DEFAULT_TIMEZONE
     const d = typeof date === 'string' ? new Date(date) : date
     return d.toLocaleString('es-CO', {
-        timeZone: APP_TIMEZONE,
+        timeZone: tz,
         year: 'numeric',
         month: 'short',
         day: 'numeric',
@@ -53,26 +57,25 @@ export function formatDateTimeCO(date: Date | string): string {
 }
 
 /**
- * Get the start of today in Bogota timezone as an ISO string.
+ * Get the start of today in the given timezone as an ISO string.
  */
-export function startOfTodayBogota(): string {
-    const now = nowBogota()
+export function startOfToday(timezone?: string): string {
+    const now = nowInTimezone(timezone)
     now.setHours(0, 0, 0, 0)
     return now.toISOString()
 }
 
 /**
- * Get the end of today in Bogota timezone as an ISO string.
+ * Get the end of today in the given timezone as an ISO string.
  */
-export function endOfTodayBogota(): string {
-    const now = nowBogota()
+export function endOfToday(timezone?: string): string {
+    const now = nowInTimezone(timezone)
     now.setHours(23, 59, 59, 999)
     return now.toISOString()
 }
 
 /**
- * Check if a given date is a Colombian holiday.
- * This is a placeholder — holidays should be checked against the holidays_co table.
+ * Check if a given date is a weekend day.
  */
 export function isWeekend(date: Date): boolean {
     const day = date.getDay()

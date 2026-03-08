@@ -2,7 +2,7 @@
 
 import { create } from 'zustand'
 import type { Profile, Business, Location, FeatureFlag } from '@/types'
-import { UserRole } from '@/lib/constants'
+import { DEFAULT_TIMEZONE } from '@/lib/constants'
 
 // ============================================
 // Auth Store
@@ -11,6 +11,7 @@ interface AuthState {
     user: Profile | null
     business: Business | null
     location: Location | null
+    timezone: string
     isLoading: boolean
     setUser: (user: Profile | null) => void
     setBusiness: (business: Business | null) => void
@@ -23,12 +24,16 @@ export const useAuthStore = create<AuthState>((set) => ({
     user: null,
     business: null,
     location: null,
+    timezone: DEFAULT_TIMEZONE,
     isLoading: true,
     setUser: (user) => set({ user }),
-    setBusiness: (business) => set({ business }),
+    setBusiness: (business) => set({
+        business,
+        timezone: business?.timezone ?? DEFAULT_TIMEZONE,
+    }),
     setLocation: (location) => set({ location }),
     setLoading: (isLoading) => set({ isLoading }),
-    reset: () => set({ user: null, business: null, location: null, isLoading: false }),
+    reset: () => set({ user: null, business: null, location: null, timezone: DEFAULT_TIMEZONE, isLoading: false }),
 }))
 
 // ============================================

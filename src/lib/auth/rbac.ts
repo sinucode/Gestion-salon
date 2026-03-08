@@ -1,5 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js'
-import { UserRole, ROLES } from '@/lib/constants'
+import { UserRole, ROLES, ROLE_RANK } from '@/lib/constants'
 
 // ============================================
 // Permission Matrix
@@ -14,8 +14,8 @@ const PERMISSIONS: Record<string, UserRole[]> = {
     'locations.write': [ROLES.SUPER_ADMIN, ROLES.ADMIN],
 
     // User Management
-    'users.read': [ROLES.SUPER_ADMIN, ROLES.ADMIN],
-    'users.write': [ROLES.SUPER_ADMIN, ROLES.ADMIN],
+    'users.read': [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.PROFESSIONAL],
+    'users.write': [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.PROFESSIONAL],
 
     // Service Catalog
     'catalog.read': [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.PROFESSIONAL],
@@ -46,8 +46,8 @@ const PERMISSIONS: Record<string, UserRole[]> = {
     'feature_flags.read': [ROLES.SUPER_ADMIN, ROLES.ADMIN],
     'feature_flags.write': [ROLES.SUPER_ADMIN],
 
-    // Audit Log
-    'audit.read': [ROLES.SUPER_ADMIN, ROLES.ADMIN],
+    // Audit Log — SUPER ADMIN ONLY
+    'audit.read': [ROLES.SUPER_ADMIN],
 
     // CSV Import
     'import.write': [ROLES.SUPER_ADMIN, ROLES.ADMIN],
@@ -119,6 +119,40 @@ export function hasPermission(role: UserRole, permission: string): boolean {
     const allowed = PERMISSIONS[permission]
     if (!allowed) return false
     return allowed.includes(role)
+}
+
+// ============================================
+// Role Hierarchy Helpers
+// ============================================
+
+/**
+ * Check if an actor with `actorRole` can manage (CRUD) a user with `targetRole`.
+ *
+ * Rules:
+ * - super_admin → can manage ANY role
+ * - admin → can manage professional, client
+ * - professional → can manage client only
+ * - client → cannot manage anyone
+ */
+export function canManageRole(actorRole: UserRole, targetRole: UserRole): boolean {
+    const actorRank = ROLE_RANK[actorRole]
+    const targetRank = ROLE_RANK[targetRole]
+    return actorRank > targetRank
+}
+
+/**
+ * Get the list of roles that a given role can create/assign.
+ * Useful for populating role dropdowns in user forms.
+ */
+export function getCreatableRoles(actorRole: UserRole): { value: UserRole; label: string }[] {
+    const allRoles: { value: UserRole; label: string }[] = [
+        { value: ROLES.SUPER_ADMIN, label: 'Super Admin' },
+        { value: ROLES.ADMIN, label: 'Administrador' },
+        { value: ROLES.PROFESSIONAL, label: 'Profesional' },
+        { value: ROLES.CLIENT, label: 'Cliente' },
+    ]
+
+    return allRoles.filter((r) => canManageRole(actorRole, r.value))
 }
 
 /**
