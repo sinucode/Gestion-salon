@@ -18,6 +18,25 @@ export const CompleteProfileSchema = z.object({
 })
 
 // ============================================
+// Profile & Settings Schemas
+// ============================================
+export const ProfileUpdateSchema = z.object({
+    first_name: z.string().min(2, 'Mínimo 2 caracteres'),
+    last_name: z.string().min(2, 'Mínimo 2 caracteres'),
+    phone: z.string().min(7, 'Teléfono inválido').optional().or(z.literal('')),
+    document_id: z.string().optional().or(z.literal('')),
+})
+
+export const PasswordUpdateSchema = z.object({
+    current_password: z.string().min(1, 'La contraseña actual es requerida'),
+    new_password: z.string().min(8, 'La nueva contraseña debe tener al menos 8 caracteres'),
+    confirm_password: z.string(),
+}).refine((data) => data.new_password === data.confirm_password, {
+    message: "Las contraseñas no coinciden",
+    path: ["confirm_password"],
+})
+
+// ============================================
 // Business Schemas
 // ============================================
 export const BusinessSchema = z.object({
