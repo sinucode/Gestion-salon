@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Building2, Plus, MapPin, Users, Loader2, Globe, Pencil, Trash2, Palette } from 'lucide-react'
+import { Building2, Plus, MapPin, Users, Loader2, Globe, Pencil, Trash2, Palette, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -32,6 +32,8 @@ export default function BusinessesPage() {
     const [deleteId, setDeleteId] = useState<string | null>(null)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState(emptyForm)
+    const [logoFile, setLogoFile] = useState<File | null>(null)
+    const fileInputRef = useRef<HTMLInputElement>(null)
 
     const fetchBusinesses = async () => {
         const supabase = createClient()
@@ -42,10 +44,11 @@ export default function BusinessesPage() {
 
     useEffect(() => { fetchBusinesses() }, [])
 
-    const openCreate = () => { setEditingId(null); setForm(emptyForm); setDialogOpen(true) }
+    const openCreate = () => { setEditingId(null); setForm(emptyForm); setLogoFile(null); setDialogOpen(true) }
     const openEdit = (biz: Business) => {
         setEditingId(biz.id)
         setForm({ name: biz.name, slug: biz.slug, nit: biz.nit || '', timezone: biz.timezone, logo_url: biz.logo_url || '', primary_color: biz.primary_color || '#7c3aed', secondary_color: biz.secondary_color || '#4f46e5', is_active: biz.is_active })
+        setLogoFile(null)
         setDialogOpen(true)
     }
     const openDelete = (id: string) => { setDeleteId(id); setDeleteOpen(true) }
@@ -53,7 +56,31 @@ export default function BusinessesPage() {
     const handleSave = async () => {
         setSaving(true)
         const supabase = createClient()
-        const payload = { ...form, nit: form.nit || null, logo_url: form.logo_url || null }
+
+        // Handle upload if a new file is chosen
+        let finalLogoUrl = form.logo_url
+        if (logoFile) {
+            const fileExt = logoFile.name.split('.').pop()
+            const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`
+
+            const { error: uploadError } = await supabase.storage
+                .from('business_logos')
+                .upload(fileName, logoFile, { upsert: true })
+
+            if (uploadError) {
+                toast.error('Error subiendo el logo: ' + uploadError.message)
+                setSaving(false)
+                return
+            }
+
+            const { data: publicUrlData } = supabase.storage
+                .from('business_logos')
+                .getPublicUrl(fileName)
+
+            finalLogoUrl = publicUrlData.publicUrl
+        }
+
+        const payload = { ...form, nit: form.nit || null, logo_url: finalLogoUrl || null }
 
         if (editingId) {
             const { error } = await supabase.from('businesses').update(payload).eq('id', editingId)
@@ -160,20 +187,51 @@ export default function BusinessesPage() {
                                 </Select>
                             </div>
                         </div>
-                        <div><Label>URL del Logo</Label><Input value={form.logo_url} onChange={e => setForm(f => ({ ...f, logo_url: e.target.value }))} placeholder="https://..." /></div>
+
+                        <div>
+                            <Label>Logo del Negocio</Label>
+                            <div className="mt-1 flex items-center gap-4">
+                                {(logoFile || form.logo_url) ? (
+                                    <img
+                                        src={logoFile ? URL.createObjectURL(logoFile) : form.logo_url}
+                                        alt="Preview"
+                                        className="w-16 h-16 rounded-lg object-cover border"
+                                    />
+                                ) : (
+                                    <div className="w-16 h-16 rounded-lg border border-dashed flex items-center justify-center bg-muted/50 cursor-pointer text-muted-foreground hover:bg-muted" onClick={() => fileInputRef.current?.click()}>
+                                        <Upload className="w-5 h-5" />
+                                    </div>
+                                )}
+                                <div className="flex-1 space-y-2">
+                                    <Input
+                                        ref={fileInputRef}
+                                        type="file"
+                                        accept="image/png, image/jpeg, image/webp"
+                                        onChange={e => {
+                                            if (e.target.files && e.target.files[0]) {
+                                                setLogoFile(e.target.files[0])
+                                            }
+                                        }}
+                                        className="text-xs"
+                                    />
+                                    <p className="text-xs text-muted-foreground">Recomendado: 256x256px. PNG, JPG o WebP.</p>
+                                </div>
+                            </div>
+                        </div>
+
                         <div className="grid grid-cols-2 gap-4">
                             <div>
                                 <Label>Color Primario</Label>
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 mt-1">
                                     <input type="color" value={form.primary_color} onChange={e => setForm(f => ({ ...f, primary_color: e.target.value }))} className="w-10 h-10 rounded border cursor-pointer" />
-                                    <Input value={form.primary_color} onChange={e => setForm(f => ({ ...f, primary_color: e.target.value }))} className="flex-1" />
+                                    <Input value={form.primary_color} onChange={e => setForm(f => ({ ...f, primary_color: e.target.value }))} className="flex-1 uppercase font-mono text-xs" />
                                 </div>
                             </div>
                             <div>
                                 <Label>Color Secundario</Label>
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 mt-1">
                                     <input type="color" value={form.secondary_color} onChange={e => setForm(f => ({ ...f, secondary_color: e.target.value }))} className="w-10 h-10 rounded border cursor-pointer" />
-                                    <Input value={form.secondary_color} onChange={e => setForm(f => ({ ...f, secondary_color: e.target.value }))} className="flex-1" />
+                                    <Input value={form.secondary_color} onChange={e => setForm(f => ({ ...f, secondary_color: e.target.value }))} className="flex-1 uppercase font-mono text-xs" />
                                 </div>
                             </div>
                         </div>
@@ -184,7 +242,10 @@ export default function BusinessesPage() {
                     </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
-                        <Button onClick={handleSave} disabled={saving || !form.name || !form.slug}>{saving ? 'Guardando...' : 'Guardar'}</Button>
+                        <Button onClick={handleSave} disabled={saving || !form.name || !form.slug}>
+                            {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                            {saving ? 'Guardando...' : 'Guardar'}
+                        </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

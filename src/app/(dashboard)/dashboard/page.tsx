@@ -18,6 +18,7 @@ import {
     Loader2,
 } from 'lucide-react'
 import { formatCOP } from '@/lib/utils/currency'
+import { CalendarView } from '@/components/dashboard/calendar-view'
 
 interface KPIs {
     appointmentsToday: number
@@ -176,6 +177,8 @@ export default function DashboardPage() {
                     </CardContent>
                 </Card>
             </div>
+
+            <CalendarView businessId={isSuperAdmin ? selectedBusinessId : user?.business_id || null} />
 
             <Card className="border-border/50 bg-card/80 backdrop-blur-sm">
                 <CardHeader>
