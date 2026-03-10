@@ -1,15 +1,17 @@
 'use client'
 
 import { useState, useMemo, useEffect } from 'react'
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, startOfDay, endOfDay } from 'date-fns'
+import { format, startOfDay, endOfDay } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { Calendar } from '@/components/ui/calendar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Loader2, User, Clock, Info } from 'lucide-react'
+import { Loader2, User, Clock, Info, ExternalLink } from 'lucide-react'
 import { getColombianHolidays, isHoliday, Holiday } from '@/lib/utils/holidays'
 import { createClient } from '@/lib/supabase/client'
 import { formatCOP } from '@/lib/utils/currency'
+import { useRouter } from 'next/navigation'
+import type { Business } from '@/types'
 
 interface CalendarViewProps {
     businessId: string | null
@@ -32,11 +34,27 @@ interface Appointment {
 }
 
 export function CalendarView({ businessId }: CalendarViewProps) {
+    const router = useRouter()
     const [date, setDate] = useState<Date | undefined>(new Date())
     const [holidays, setHolidays] = useState<Holiday[]>([])
     const [professionals, setProfessionals] = useState<Professional[]>([])
     const [appointments, setAppointments] = useState<Appointment[]>([])
+    const [businessData, setBusinessData] = useState<Business | null>(null)
     const [loading, setLoading] = useState(false)
+
+    // Fetch business data (colors, etc.)
+    useEffect(() => {
+        const fetchBusiness = async () => {
+            if (!businessId) {
+                setBusinessData(null)
+                return
+            }
+            const supabase = createClient()
+            const { data } = await supabase.from('businesses').select('*').eq('id', businessId).single()
+            if (data) setBusinessData(data as Business)
+        }
+        fetchBusiness()
+    }, [businessId])
 
     // Load holidays for the current year
     useEffect(() => {
@@ -92,32 +110,46 @@ export function CalendarView({ businessId }: CalendarViewProps) {
         no_show: 'bg-gray-500/10 border-gray-500/50 text-gray-700' 
     }
 
+    const primaryColor = businessData?.primary_color || '#7c3aed'
+
     return (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             {/* Monthly Calendar */}
-            <Card className="lg:col-span-4 border-border/50 bg-card/80 backdrop-blur-sm">
+            <Card className="lg:col-span-4 border-border/50 bg-card/80 backdrop-blur-sm shadow-xl">
                 <CardHeader>
                     <CardTitle className="text-lg flex items-center gap-2">
-                        <Clock className="w-5 h-5 text-primary" />
+                        <Clock className="w-5 h-5" style={{ color: primaryColor }} />
                         Calendario
                     </CardTitle>
                 </CardHeader>
                 <CardContent>
-                    <Calendar
-                        mode="single"
-                        selected={date}
-                        onSelect={setDate}
-                        locale={es}
-                        className="rounded-md border border-border/50"
-                        modifiers={{
-                            holiday: (day) => !!isHoliday(day, holidays)
-                        }}
-                        modifiersStyles={{
-                            holiday: { color: 'white', backgroundColor: '#ef4444' }
-                        }}
-                    />
+                    <div className="calendar-branded">
+                        <style jsx global>{`
+                            .calendar-branded .rdp-day_selected {
+                                background-color: ${primaryColor} !important;
+                                color: white !important;
+                            }
+                            .calendar-branded .rdp-day_today {
+                                color: ${primaryColor} !important;
+                                border: 1px solid ${primaryColor}44;
+                            }
+                        `}</style>
+                        <Calendar
+                            mode="single"
+                            selected={date}
+                            onSelect={setDate}
+                            locale={es}
+                            className="rounded-md border border-border/50"
+                            modifiers={{
+                                holiday: (day) => !!isHoliday(day, holidays)
+                            }}
+                            modifiersStyles={{
+                                holiday: { color: 'white', backgroundColor: '#ef4444' }
+                            }}
+                        />
+                    </div>
                     {selectedHoliday && (
-                        <div className="mt-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 flex items-center gap-3">
+                        <div className="mt-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 flex items-center gap-3 animate-in fade-in slide-in-from-top-2">
                             <Info className="w-4 h-4 text-red-500" />
                             <p className="text-xs font-semibold text-red-600">Festivo: {selectedHoliday.name}</p>
                         </div>
@@ -126,7 +158,7 @@ export function CalendarView({ businessId }: CalendarViewProps) {
             </Card>
 
             {/* Daily Agenda */}
-            <Card className="lg:col-span-8 border-border/50 bg-card/80 backdrop-blur-sm">
+            <Card className="lg:col-span-8 border-border/50 bg-card/80 backdrop-blur-sm shadow-xl">
                 <CardHeader>
                     <div className="flex items-center justify-between">
                         <CardTitle className="text-lg">Agenda: {date ? format(date, "EEEE, d 'de' MMMM", { locale: es }) : ''}</CardTitle>
@@ -136,47 +168,57 @@ export function CalendarView({ businessId }: CalendarViewProps) {
                 <CardContent>
                     {loading ? (
                         <div className="flex items-center justify-center py-24">
-                            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                            <Loader2 className="w-8 h-8 animate-spin text-primary" style={{ color: primaryColor }} />
                         </div>
                     ) : professionals.length === 0 ? (
-                        <div className="text-center py-12 text-muted-foreground">
-                            No hay profesionales registrados para este negocio.
+                        <div className="text-center py-12 text-muted-foreground flex flex-col items-center gap-2">
+                            <User className="w-12 h-12 opacity-20" />
+                            <p>No hay profesionales registrados para este negocio.</p>
                         </div>
                     ) : (
-                        <div className="overflow-x-auto">
+                        <div className="overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-muted">
                             <div className="flex gap-4 min-w-[600px]">
                                 {professionals.map((prof) => {
                                     const profAppts = appointments.filter(a => a.professional_id === prof.id)
                                     return (
                                         <div key={prof.id} className="flex-1 min-w-[200px] space-y-3">
-                                            <div className="p-3 rounded-lg bg-muted/50 border border-border/50 text-center">
-                                                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-2 text-primary">
+                                            <div className="p-3 rounded-xl bg-muted/30 border border-border/50 text-center hover:bg-muted/50 transition-colors">
+                                                <div className="w-10 h-10 rounded-full flex items-center justify-center mx-auto mb-2 shadow-sm" style={{ background: `${primaryColor}15`, color: primaryColor }}>
                                                     <User className="w-5 h-5" />
                                                 </div>
                                                 <p className="text-sm font-bold">{prof.first_name} {prof.last_name}</p>
-                                                <Badge variant="secondary" className="text-[10px] mt-1">{profAppts.length} citas</Badge>
+                                                <Badge variant="secondary" className="text-[10px] mt-1 font-medium">{profAppts.length} citas</Badge>
                                             </div>
 
                                             <div className="space-y-2">
                                                 {profAppts.length === 0 ? (
-                                                    <p className="text-[10px] text-center text-muted-foreground py-4">Sin citas</p>
+                                                    <p className="text-[10px] text-center text-muted-foreground py-8 border border-dashed rounded-lg opacity-50">Sin citas</p>
                                                 ) : (
                                                     profAppts.map((appt) => (
                                                         <div 
                                                             key={appt.id} 
-                                                            className={`p-2 rounded border text-xs shadow-sm transition-all hover:scale-[1.02] ${statusColor[appt.status] || 'bg-muted border-border'}`}
+                                                            onClick={() => router.push(`/appointments?id=${appt.id}`)}
+                                                            className={`group p-3 rounded-xl border text-xs shadow-sm transition-all hover:scale-[1.02] cursor-pointer hover:shadow-md ${statusColor[appt.status] || 'bg-muted border-border'}`}
                                                         >
-                                                            <div className="flex justify-between items-start mb-1">
-                                                                <span className="font-bold opacity-80">
-                                                                    {format(new Date(appt.starts_at), 'HH:mm')}
-                                                                </span>
-                                                                <span className="text-[9px] font-medium bg-black/5 px-1 rounded">
+                                                            <div className="flex justify-between items-start mb-2">
+                                                                <div className="flex flex-col">
+                                                                    <span className="font-bold text-[13px]">
+                                                                        {format(new Date(appt.starts_at), 'HH:mm')}
+                                                                    </span>
+                                                                    <span className="text-[10px] opacity-70">
+                                                                        {format(new Date(appt.ends_at), 'HH:mm')}
+                                                                    </span>
+                                                                </div>
+                                                                <Badge variant="secondary" className="text-[9px] px-1.5 py-0">
                                                                     {formatCOP(appt.total_price)}
-                                                                </span>
+                                                                </Badge>
                                                             </div>
-                                                            <p className="font-semibold truncate">
-                                                                {appt.client ? `${appt.client.first_name} ${appt.client.last_name}` : 'Cliente Anon.'}
-                                                            </p>
+                                                            <div className="flex items-center justify-between">
+                                                                <p className="font-bold truncate text-[12px] flex-1">
+                                                                    {appt.client ? `${appt.client.first_name} ${appt.client.last_name}` : 'Cliente Anon.'}
+                                                                </p>
+                                                                <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-50 transition-opacity ml-1" />
+                                                            </div>
                                                         </div>
                                                     ))
                                                 )}
