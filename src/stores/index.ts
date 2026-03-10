@@ -13,10 +13,12 @@ interface AuthState {
     location: Location | null
     timezone: string
     isLoading: boolean
+    selectedBusinessId: string | null // super admin business filter
     setUser: (user: Profile | null) => void
     setBusiness: (business: Business | null) => void
     setLocation: (location: Location | null) => void
     setLoading: (loading: boolean) => void
+    setSelectedBusinessId: (id: string | null) => void
     reset: () => void
 }
 
@@ -26,6 +28,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     location: null,
     timezone: DEFAULT_TIMEZONE,
     isLoading: true,
+    selectedBusinessId: typeof window !== 'undefined' ? localStorage.getItem('selectedBusinessId') : null,
     setUser: (user) => set({ user }),
     setBusiness: (business) => set({
         business,
@@ -33,7 +36,20 @@ export const useAuthStore = create<AuthState>((set) => ({
     }),
     setLocation: (location) => set({ location }),
     setLoading: (isLoading) => set({ isLoading }),
-    reset: () => set({ user: null, business: null, location: null, timezone: DEFAULT_TIMEZONE, isLoading: false }),
+    setSelectedBusinessId: (selectedBusinessId) => {
+        if (typeof window !== 'undefined') {
+            if (selectedBusinessId) {
+                localStorage.setItem('selectedBusinessId', selectedBusinessId)
+            } else {
+                localStorage.removeItem('selectedBusinessId')
+            }
+        }
+        set({ selectedBusinessId })
+    },
+    reset: () => {
+        if (typeof window !== 'undefined') localStorage.removeItem('selectedBusinessId')
+        set({ user: null, business: null, location: null, timezone: DEFAULT_TIMEZONE, isLoading: false, selectedBusinessId: null })
+    },
 }))
 
 // ============================================

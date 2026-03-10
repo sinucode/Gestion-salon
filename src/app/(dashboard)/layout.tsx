@@ -7,17 +7,26 @@ import { Separator } from '@/components/ui/separator'
 import { createClient } from '@/lib/supabase/client'
 import { useAuthStore, useFeatureFlagsStore } from '@/stores'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Building2 } from 'lucide-react'
 import { UserRole } from '@/lib/constants'
+
+interface BusinessOption {
+    id: string
+    name: string
+}
 
 export default function DashboardLayout({
     children,
 }: {
     children: React.ReactNode
 }) {
-    const { setUser, setBusiness, setLocation, setLoading, isLoading, user } = useAuthStore()
+    const { setUser, setBusiness, setLocation, setLoading, isLoading, user, selectedBusinessId, setSelectedBusinessId } = useAuthStore()
     const { setFlags } = useFeatureFlagsStore()
     const [ready, setReady] = useState(false)
+    const [businessOptions, setBusinessOptions] = useState<BusinessOption[]>([])
 
+    // Initial auth load
     useEffect(() => {
         const loadUserData = async () => {
             setLoading(true)
@@ -72,6 +81,16 @@ export default function DashboardLayout({
                         .eq('business_id', profile.business_id)
                     if (flags) setFlags(flags)
                 }
+
+                // Super admin: load business options
+                if (profile.role === 'super_admin') {
+                    const { data: bizs } = await supabase
+                        .from('businesses')
+                        .select('id, name')
+                        .eq('is_active', true)
+                        .order('name')
+                    if (bizs) setBusinessOptions(bizs)
+                }
             }
 
             setLoading(false)
@@ -80,6 +99,22 @@ export default function DashboardLayout({
 
         loadUserData()
     }, [setUser, setBusiness, setLocation, setLoading, setFlags])
+
+    // When super admin changes business, reload feature flags for sidebar
+    useEffect(() => {
+        if (!selectedBusinessId || !user || user.role !== 'super_admin') return
+        const loadFlags = async () => {
+            const supabase = createClient()
+            const { data: flags } = await supabase
+                .from('feature_flags')
+                .select('*')
+                .eq('business_id', selectedBusinessId)
+            if (flags) setFlags(flags)
+        }
+        loadFlags()
+    }, [selectedBusinessId, user, setFlags])
+
+    const isSuperAdmin = user?.role === 'super_admin'
 
     if (!ready || isLoading) {
         return (
@@ -122,6 +157,27 @@ export default function DashboardLayout({
                             </p>
                         )}
                     </div>
+
+                    {/* Global Business Selector — Super Admin only */}
+                    {isSuperAdmin && businessOptions.length > 0 && (
+                        <Select
+                            value={selectedBusinessId ?? 'all'}
+                            onValueChange={(v) => setSelectedBusinessId(v === 'all' ? null : v)}
+                        >
+                            <SelectTrigger className="w-[260px] border-border/50 bg-card/80 backdrop-blur-sm">
+                                <Building2 className="w-4 h-4 mr-2 text-violet-500" />
+                                <SelectValue placeholder="Seleccionar negocio" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">🌐 Todos los negocios</SelectItem>
+                                {businessOptions.map((biz) => (
+                                    <SelectItem key={biz.id} value={biz.id}>
+                                        {biz.name}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    )}
                 </header>
                 <main className="flex-1 p-4 md:p-6 lg:p-8">
                     {children}
@@ -130,3 +186,4 @@ export default function DashboardLayout({
         </SidebarProvider>
     )
 }
+

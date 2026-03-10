@@ -2,176 +2,96 @@
 
 import { useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { CalendarDays, Plus, Loader2 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { CalendarDays, Loader2, CheckCircle2, Play, X, UserX } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/stores'
+import { toast } from 'sonner'
 import { formatCOP } from '@/lib/utils/currency'
 
-interface AppointmentRow {
-    id: string
-    status: string
-    starts_at: string
-    ends_at: string
-    total_price: number
-    is_walk_in: boolean
-    walk_in_name: string | null
-    notes: string | null
+interface Appointment {
+    id: string; status: string; total_price: number; starts_at: string; ends_at: string; notes: string | null
     professional: { first_name: string; last_name: string } | null
     client: { first_name: string; last_name: string } | null
-    services: { service: { name: string } | null }[]
+    services: { name: string; price: number }[]
 }
 
+const STATUS_LABELS: Record<string, string> = { scheduled: 'Agendada', in_progress: 'En Progreso', completed: 'Completada', approved: 'Aprobada', cancelled: 'Cancelada', no_show: 'No Asistió' }
+const STATUS_COLORS: Record<string, string> = { scheduled: 'bg-blue-500/10 text-blue-500', in_progress: 'bg-yellow-500/10 text-yellow-500', completed: 'bg-green-500/10 text-green-500', approved: 'bg-emerald-500/10 text-emerald-500', cancelled: 'bg-red-500/10 text-red-500', no_show: 'bg-gray-500/10 text-gray-500' }
+
 export default function AppointmentsPage() {
-    const { user } = useAuthStore()
-    const [appointments, setAppointments] = useState<AppointmentRow[]>([])
+    const { user, selectedBusinessId } = useAuthStore()
+    const isSuperAdmin = user?.role === 'super_admin'
+    const filterBusinessId = isSuperAdmin ? selectedBusinessId : user?.business_id
+
+    const [appointments, setAppointments] = useState<Appointment[]>([])
     const [loading, setLoading] = useState(true)
 
-    useEffect(() => {
-        const fetchAppointments = async () => {
-            if (!user) return
-            const supabase = createClient()
-            const isSuperAdmin = user.role === 'super_admin'
-
-            let query = supabase
-                .from('appointments')
-                .select(`
-                    id, status, starts_at, ends_at, total_price, is_walk_in, walk_in_name, notes,
-                    professional:profiles!appointments_professional_id_fkey(first_name, last_name),
-                    client:profiles!appointments_client_id_fkey(first_name, last_name),
-                    services:appointment_services(service:services(name))
-                `)
-                .order('starts_at', { ascending: false })
-                .limit(20)
-
-            if (!isSuperAdmin && user.business_id) {
-                query = query.eq('business_id', user.business_id)
-            }
-
-            const { data } = await query
-            setAppointments((data as unknown as AppointmentRow[]) ?? [])
-            setLoading(false)
-        }
-        fetchAppointments()
-    }, [user])
-
-    const statusLabel: Record<string, string> = {
-        scheduled: 'Agendada',
-        in_progress: 'En Progreso',
-        completed: 'Completada',
-        approved: 'Aprobada',
-        cancelled: 'Cancelada',
-        no_show: 'No Asistió',
+    const fetchAppointments = async () => {
+        if (!filterBusinessId && !isSuperAdmin) { setLoading(false); return }
+        const supabase = createClient()
+        let query = supabase.from('appointments')
+            .select('id, status, total_price, starts_at, ends_at, notes, professional:profiles!appointments_professional_id_fkey(first_name, last_name), client:profiles!appointments_client_id_fkey(first_name, last_name), services:appointment_services(name:services(name), price:services(price))')
+            .order('starts_at', { ascending: false }).limit(30)
+        if (filterBusinessId) query = query.eq('business_id', filterBusinessId)
+        const { data } = await query
+        if (data) setAppointments(data as unknown as Appointment[])
+        setLoading(false)
     }
 
-    const statusColor: Record<string, string> = {
-        scheduled: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
-        in_progress: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
-        completed: 'bg-green-500/10 text-green-500 border-green-500/20',
-        approved: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20',
-        cancelled: 'bg-red-500/10 text-red-500 border-red-500/20',
-        no_show: 'bg-gray-500/10 text-gray-500 border-gray-500/20',
+    useEffect(() => { setLoading(true); fetchAppointments() }, [filterBusinessId])
+
+    const updateStatus = async (id: string, status: string) => {
+        const supabase = createClient()
+        const { error } = await supabase.from('appointments').update({ status }).eq('id', id)
+        if (error) { toast.error(error.message); return }
+        toast.success(`Cita ${STATUS_LABELS[status] || status}`); fetchAppointments()
     }
+
+    if (loading) return <div className="flex items-center justify-center py-24"><Loader2 className="w-8 h-8 animate-spin text-muted-foreground" /></div>
+
+    if (!filterBusinessId && isSuperAdmin) return (
+        <div className="space-y-6"><h1 className="text-2xl font-bold">Citas</h1>
+            <Card className="border-yellow-500/30 bg-yellow-500/5"><CardContent className="py-4 text-sm text-yellow-400 text-center">Selecciona un negocio para ver sus citas.</CardContent></Card>
+        </div>
+    )
 
     return (
         <div className="space-y-6">
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-2xl font-bold tracking-tight">Citas</h1>
-                    <p className="text-muted-foreground">Agenda, citas express y aprobaciones</p>
-                </div>
-                <div className="flex gap-2">
-                    <Button variant="outline">
-                        <Plus className="w-4 h-4 mr-2" />
-                        Cita Express
-                    </Button>
-                    <Button className="gradient-brand text-white">
-                        <Plus className="w-4 h-4 mr-2" />
-                        Nueva Cita
-                    </Button>
-                </div>
-            </div>
+            <div><h1 className="text-2xl font-bold tracking-tight">Citas</h1><p className="text-muted-foreground">Agenda y gestión de citas</p></div>
 
-            {loading ? (
-                <div className="flex items-center justify-center py-24">
-                    <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-                </div>
-            ) : appointments.length === 0 ? (
-                <Card className="border-border/50 bg-card/80 backdrop-blur-sm">
-                    <CardContent className="py-12 text-center">
-                        <CalendarDays className="w-12 h-12 mx-auto text-muted-foreground/30 mb-4" />
-                        <p className="text-muted-foreground">No hay citas registradas aún.</p>
-                    </CardContent>
-                </Card>
+            {appointments.length === 0 ? (
+                <Card className="border-border/50 bg-card/80"><CardContent className="py-12 text-center"><CalendarDays className="w-12 h-12 mx-auto text-muted-foreground/30 mb-4" /><p className="text-muted-foreground">No hay citas registradas.</p></CardContent></Card>
             ) : (
-                <Card className="border-border/50 bg-card/80 backdrop-blur-sm">
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <CalendarDays className="w-5 h-5" />
-                            Listado de Citas ({appointments.length})
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
-                                <thead>
-                                    <tr className="border-b border-border/50">
-                                        <th className="text-left py-3 px-2 text-muted-foreground font-medium">Fecha / Hora</th>
-                                        <th className="text-left py-3 px-2 text-muted-foreground font-medium">Profesional</th>
-                                        <th className="text-left py-3 px-2 text-muted-foreground font-medium">Cliente</th>
-                                        <th className="text-left py-3 px-2 text-muted-foreground font-medium">Servicios</th>
-                                        <th className="text-right py-3 px-2 text-muted-foreground font-medium">Total</th>
-                                        <th className="text-center py-3 px-2 text-muted-foreground font-medium">Estado</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {appointments.map((appt) => (
-                                        <tr key={appt.id} className="border-b border-border/20 hover:bg-muted/30 transition-colors">
-                                            <td className="py-3 px-2">
-                                                <div className="font-medium">
-                                                    {new Date(appt.starts_at).toLocaleDateString('es-CO', { day: 'numeric', month: 'short' })}
-                                                </div>
-                                                <div className="text-xs text-muted-foreground">
-                                                    {new Date(appt.starts_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}
-                                                    {' - '}
-                                                    {new Date(appt.ends_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}
-                                                </div>
-                                            </td>
-                                            <td className="py-3 px-2">
-                                                {appt.professional?.first_name} {appt.professional?.last_name}
-                                            </td>
-                                            <td className="py-3 px-2">
-                                                {appt.is_walk_in ? (
-                                                    <span className="text-muted-foreground italic">{appt.walk_in_name || 'Sin cita'}</span>
-                                                ) : (
-                                                    appt.client ? `${appt.client.first_name} ${appt.client.last_name}` : '—'
-                                                )}
-                                            </td>
-                                            <td className="py-3 px-2">
-                                                <div className="flex flex-wrap gap-1">
-                                                    {appt.services?.map((s, i) => (
-                                                        <Badge key={i} variant="secondary" className="text-xs">
-                                                            {s.service?.name || '—'}
-                                                        </Badge>
-                                                    ))}
-                                                </div>
-                                            </td>
-                                            <td className="py-3 px-2 text-right font-semibold">
-                                                {formatCOP(appt.total_price)}
-                                            </td>
-                                            <td className="py-3 px-2 text-center">
-                                                <Badge className={`text-xs ${statusColor[appt.status] || ''}`}>
-                                                    {statusLabel[appt.status] || appt.status}
-                                                </Badge>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    </CardContent>
-                </Card>
+                <Card className="border-border/50 bg-card/80 backdrop-blur-sm"><CardContent className="p-0">
+                    <table className="w-full text-sm">
+                        <thead><tr className="border-b border-border/50">
+                            <th className="text-left py-3 px-4 font-medium text-muted-foreground">Fecha</th>
+                            <th className="text-left py-3 px-4 font-medium text-muted-foreground">Profesional</th>
+                            <th className="text-left py-3 px-4 font-medium text-muted-foreground">Cliente</th>
+                            <th className="text-right py-3 px-4 font-medium text-muted-foreground">Total</th>
+                            <th className="text-center py-3 px-4 font-medium text-muted-foreground">Estado</th>
+                            <th className="text-center py-3 px-4 font-medium text-muted-foreground">Acciones</th>
+                        </tr></thead>
+                        <tbody>{appointments.map(a => (
+                            <tr key={a.id} className="border-b border-border/20 hover:bg-muted/30">
+                                <td className="py-3 px-4 text-xs whitespace-nowrap">{new Date(a.starts_at).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
+                                <td className="py-3 px-4">{a.professional?.first_name} {a.professional?.last_name}</td>
+                                <td className="py-3 px-4 text-muted-foreground">{a.client?.first_name} {a.client?.last_name}</td>
+                                <td className="py-3 px-4 text-right font-semibold">{formatCOP(a.total_price)}</td>
+                                <td className="py-3 px-4 text-center"><Badge className={`text-xs ${STATUS_COLORS[a.status] || ''}`}>{STATUS_LABELS[a.status] || a.status}</Badge></td>
+                                <td className="py-3 px-4 text-center">
+                                    <div className="flex gap-1 justify-center">
+                                        {a.status === 'scheduled' && <><Button variant="ghost" size="sm" className="text-yellow-500" onClick={() => updateStatus(a.id, 'in_progress')} title="Iniciar"><Play className="w-3 h-3" /></Button><Button variant="ghost" size="sm" className="text-red-500" onClick={() => updateStatus(a.id, 'cancelled')} title="Cancelar"><X className="w-3 h-3" /></Button><Button variant="ghost" size="sm" className="text-gray-400" onClick={() => updateStatus(a.id, 'no_show')} title="No asistió"><UserX className="w-3 h-3" /></Button></>}
+                                        {a.status === 'in_progress' && <Button variant="ghost" size="sm" className="text-green-500" onClick={() => updateStatus(a.id, 'completed')} title="Completar"><CheckCircle2 className="w-3 h-3" /></Button>}
+                                        {a.status === 'completed' && <Button variant="ghost" size="sm" className="text-emerald-500" onClick={() => updateStatus(a.id, 'approved')} title="Aprobar"><CheckCircle2 className="w-3 h-3 mr-1" />Aprobar</Button>}
+                                    </div>
+                                </td>
+                            </tr>
+                        ))}</tbody>
+                    </table>
+                </CardContent></Card>
             )}
         </div>
     )

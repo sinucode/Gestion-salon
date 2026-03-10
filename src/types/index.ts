@@ -28,6 +28,8 @@ export interface Business {
     slug: string
     nit: string | null
     logo_url: string | null
+    primary_color: string | null
+    secondary_color: string | null
     timezone: string
     is_active: boolean
     created_at: string
