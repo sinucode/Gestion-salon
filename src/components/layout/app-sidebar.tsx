@@ -41,7 +41,7 @@ import {
     Scissors,
     ChevronUp,
 } from 'lucide-react'
-import { useAuthStore } from '@/stores'
+import { useAuthStore, useFeatureFlagsStore } from '@/stores'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { hasPermission } from '@/lib/auth/rbac'
@@ -62,28 +62,35 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
 }
 
 const navItems = [
-    { label: 'Dashboard', href: '/dashboard', icon: 'LayoutDashboard', permission: null },
-    { label: 'Negocios', href: '/super-admin/businesses', icon: 'Building2', permission: 'businesses.read' },
-    { label: 'Sedes', href: '/admin/locations', icon: 'MapPin', permission: 'locations.read' },
-    { label: 'Usuarios', href: '/admin/users', icon: 'Users', permission: 'users.read' },
-    { label: 'Catálogo', href: '/catalog', icon: 'Layers', permission: 'catalog.read' },
-    { label: 'Citas', href: '/appointments', icon: 'CalendarDays', permission: 'appointments.read' },
-    { label: 'Inventario', href: '/inventory', icon: 'Package', permission: 'inventory.read' },
-    { label: 'Novedades', href: '/damages', icon: 'AlertTriangle', permission: 'damages.read' },
-    { label: 'Finanzas', href: '/finance', icon: 'DollarSign', permission: 'finance.read' },
-    { label: 'Importar CSV', href: '/import', icon: 'Upload', permission: 'import.write' },
-    { label: 'Feature Flags', href: '/super-admin/features', icon: 'ToggleLeft', permission: 'feature_flags.write' },
-    { label: 'Auditoría', href: '/super-admin/audit', icon: 'FileText', permission: 'audit.read' },
+    { label: 'Dashboard', href: '/dashboard', icon: 'LayoutDashboard', permission: null, featureFlag: null },
+    { label: 'Negocios', href: '/super-admin/businesses', icon: 'Building2', permission: 'businesses.read', featureFlag: null },
+    { label: 'Sedes', href: '/admin/locations', icon: 'MapPin', permission: 'locations.read', featureFlag: null },
+    { label: 'Usuarios', href: '/admin/users', icon: 'Users', permission: 'users.read', featureFlag: null },
+    { label: 'Catálogo', href: '/catalog', icon: 'Layers', permission: 'catalog.read', featureFlag: 'mod_catalog' },
+    { label: 'Citas', href: '/appointments', icon: 'CalendarDays', permission: 'appointments.read', featureFlag: 'mod_appointments' },
+    { label: 'Inventario', href: '/inventory', icon: 'Package', permission: 'inventory.read', featureFlag: 'mod_inventory' },
+    { label: 'Novedades', href: '/damages', icon: 'AlertTriangle', permission: 'damages.read', featureFlag: 'mod_damages' },
+    { label: 'Finanzas', href: '/finance', icon: 'DollarSign', permission: 'finance.read', featureFlag: 'mod_finance' },
+    { label: 'Importar CSV', href: '/import', icon: 'Upload', permission: 'import.write', featureFlag: 'mod_import' },
+    { label: 'Feature Flags', href: '/super-admin/features', icon: 'ToggleLeft', permission: 'feature_flags.write', featureFlag: null },
+    { label: 'Auditoría', href: '/super-admin/audit', icon: 'FileText', permission: 'audit.read', featureFlag: null },
 ]
 
 export function AppSidebar() {
     const pathname = usePathname()
     const router = useRouter()
     const { user } = useAuthStore()
+    const { isEnabled } = useFeatureFlagsStore()
 
-    const filteredItems = navItems.filter(
-        (item) => item.permission === null || (user && hasPermission(user.role, item.permission))
-    )
+    const isSuperAdmin = user?.role === 'super_admin'
+
+    const filteredItems = navItems.filter((item) => {
+        // Check permission
+        if (item.permission !== null && !(user && hasPermission(user.role, item.permission))) return false
+        // Check feature flag (super_admin always sees everything)
+        if (item.featureFlag && !isSuperAdmin && !isEnabled(item.featureFlag)) return false
+        return true
+    })
 
     const handleLogout = async () => {
         const supabase = createClient()
