@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { useAuthStore, useFeatureFlagsStore } from '@/stores'
+import { useEffect, useState, useCallback } from 'react'
+import { useAuthStore } from '@/stores'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
     CalendarDays,
     DollarSign,
@@ -37,8 +38,17 @@ interface RecentAppointment {
     client: { first_name: string; last_name: string } | null
 }
 
+interface BusinessOption {
+    id: string
+    name: string
+}
+
 export default function DashboardPage() {
     const { user, business } = useAuthStore()
+    const isSuperAdmin = user?.role === 'super_admin'
+
+    const [businessOptions, setBusinessOptions] = useState<BusinessOption[]>([])
+    const [selectedBusinessId, setSelectedBusinessId] = useState<string>('all')
     const [kpis, setKpis] = useState<KPIs>({
         appointmentsToday: 0,
         pendingApproval: 0,
@@ -50,113 +60,120 @@ export default function DashboardPage() {
     const [recentAppointments, setRecentAppointments] = useState<RecentAppointment[]>([])
     const [loading, setLoading] = useState(true)
 
+    // Load businesses for the super admin selector
     useEffect(() => {
-        const fetchKPIs = async () => {
-            if (!user) return
-            setLoading(true)
+        if (!isSuperAdmin) return
+        const loadBusinesses = async () => {
             const supabase = createClient()
-            const isSuperAdmin = user.role === 'super_admin'
-
-            const today = new Date()
-            const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate()).toISOString()
-            const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59).toISOString()
-
-            try {
-                // Appointments today
-                let apptQuery = supabase
-                    .from('appointments')
-                    .select('id, status, total_price', { count: 'exact' })
-                    .gte('starts_at', startOfDay)
-                    .lte('starts_at', endOfDay)
-
-                if (!isSuperAdmin && user.business_id) {
-                    apptQuery = apptQuery.eq('business_id', user.business_id)
-                }
-
-                const { data: todayAppts, count: apptCount } = await apptQuery
-
-                const pendingApproval = todayAppts?.filter(a => a.status === 'scheduled').length ?? 0
-                const grossIncome = todayAppts
-                    ?.filter(a => a.status === 'completed' || a.status === 'approved')
-                    .reduce((sum, a) => sum + (a.total_price || 0), 0) ?? 0
-
-                // Active clients
-                let clientQuery = supabase
-                    .from('profiles')
-                    .select('id', { count: 'exact' })
-                    .eq('role', 'client')
-                    .eq('is_active', true)
-
-                if (!isSuperAdmin && user.business_id) {
-                    clientQuery = clientQuery.eq('business_id', user.business_id)
-                }
-                const { count: clientCount } = await clientQuery
-
-                // Low stock items
-                let stockQuery = supabase
-                    .from('products')
-                    .select('id', { count: 'exact' })
-                    .eq('is_active', true)
-
-                if (!isSuperAdmin && user.business_id) {
-                    stockQuery = stockQuery.eq('business_id', user.business_id)
-                }
-
-                // We need to filter where stock_qty <= min_stock
-                // Supabase doesn't support column-to-column comparison in .filter()
-                // So we fetch all and filter client side
-                let stockQueryAll = supabase
-                    .from('products')
-                    .select('id, stock_qty, min_stock')
-                    .eq('is_active', true)
-
-                if (!isSuperAdmin && user.business_id) {
-                    stockQueryAll = stockQueryAll.eq('business_id', user.business_id)
-                }
-                const { data: products } = await stockQueryAll
-                const lowStock = products?.filter(p => p.stock_qty <= p.min_stock).length ?? 0
-
-                // Total businesses (super_admin only)
-                let totalBusinesses = 0
-                if (isSuperAdmin) {
-                    const { count } = await supabase
-                        .from('businesses')
-                        .select('id', { count: 'exact' })
-                    totalBusinesses = count ?? 0
-                }
-
-                setKpis({
-                    appointmentsToday: apptCount ?? 0,
-                    pendingApproval,
-                    grossIncomeToday: grossIncome,
-                    activeClients: clientCount ?? 0,
-                    lowStockItems: lowStock,
-                    totalBusinesses,
-                })
-
-                // Recent appointments (last 5)
-                let recentQuery = supabase
-                    .from('appointments')
-                    .select('id, status, total_price, starts_at, professional:profiles!appointments_professional_id_fkey(first_name, last_name), client:profiles!appointments_client_id_fkey(first_name, last_name)')
-                    .order('starts_at', { ascending: false })
-                    .limit(5)
-
-                if (!isSuperAdmin && user.business_id) {
-                    recentQuery = recentQuery.eq('business_id', user.business_id)
-                }
-
-                const { data: recent } = await recentQuery
-                setRecentAppointments((recent as unknown as RecentAppointment[]) ?? [])
-
-            } catch (error) {
-                console.error('Error fetching KPIs:', error)
-            } finally {
-                setLoading(false)
-            }
+            const { data } = await supabase
+                .from('businesses')
+                .select('id, name')
+                .eq('is_active', true)
+                .order('name')
+            if (data) setBusinessOptions(data)
         }
+        loadBusinesses()
+    }, [isSuperAdmin])
 
+    const fetchKPIs = useCallback(async () => {
+        if (!user) return
+        setLoading(true)
+        const supabase = createClient()
+
+        // Determine the filter business_id
+        const filterBusinessId = isSuperAdmin
+            ? (selectedBusinessId === 'all' ? null : selectedBusinessId)
+            : user.business_id
+
+        const today = new Date()
+        const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate()).toISOString()
+        const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59).toISOString()
+
+        try {
+            // Appointments today
+            let apptQuery = supabase
+                .from('appointments')
+                .select('id, status, total_price', { count: 'exact' })
+                .gte('starts_at', startOfDay)
+                .lte('starts_at', endOfDay)
+
+            if (filterBusinessId) {
+                apptQuery = apptQuery.eq('business_id', filterBusinessId)
+            }
+
+            const { data: todayAppts, count: apptCount } = await apptQuery
+
+            const pendingApproval = todayAppts?.filter(a => a.status === 'scheduled').length ?? 0
+            const grossIncome = todayAppts
+                ?.filter(a => a.status === 'completed' || a.status === 'approved')
+                .reduce((sum, a) => sum + (a.total_price || 0), 0) ?? 0
+
+            // Active clients
+            let clientQuery = supabase
+                .from('profiles')
+                .select('id', { count: 'exact' })
+                .eq('role', 'client')
+                .eq('is_active', true)
+
+            if (filterBusinessId) {
+                clientQuery = clientQuery.eq('business_id', filterBusinessId)
+            }
+            const { count: clientCount } = await clientQuery
+
+            // Low stock
+            let stockQueryAll = supabase
+                .from('products')
+                .select('id, stock_qty, min_stock')
+                .eq('is_active', true)
+
+            if (filterBusinessId) {
+                stockQueryAll = stockQueryAll.eq('business_id', filterBusinessId)
+            }
+            const { data: products } = await stockQueryAll
+            const lowStock = products?.filter(p => p.stock_qty <= p.min_stock).length ?? 0
+
+            // Total businesses
+            let totalBusinesses = 0
+            if (isSuperAdmin && !filterBusinessId) {
+                const { count } = await supabase
+                    .from('businesses')
+                    .select('id', { count: 'exact' })
+                totalBusinesses = count ?? 0
+            }
+
+            setKpis({
+                appointmentsToday: apptCount ?? 0,
+                pendingApproval,
+                grossIncomeToday: grossIncome,
+                activeClients: clientCount ?? 0,
+                lowStockItems: lowStock,
+                totalBusinesses,
+            })
+
+            // Recent appointments (last 5)
+            let recentQuery = supabase
+                .from('appointments')
+                .select('id, status, total_price, starts_at, professional:profiles!appointments_professional_id_fkey(first_name, last_name), client:profiles!appointments_client_id_fkey(first_name, last_name)')
+                .order('starts_at', { ascending: false })
+                .limit(5)
+
+            if (filterBusinessId) {
+                recentQuery = recentQuery.eq('business_id', filterBusinessId)
+            }
+
+            const { data: recent } = await recentQuery
+            setRecentAppointments((recent as unknown as RecentAppointment[]) ?? [])
+
+        } catch (error) {
+            console.error('Error fetching KPIs:', error)
+        } finally {
+            setLoading(false)
+        }
+    }, [user, isSuperAdmin, selectedBusinessId])
+
+    useEffect(() => {
         fetchKPIs()
-    }, [user])
+    }, [fetchKPIs])
 
     const statusLabel: Record<string, string> = {
         scheduled: 'Agendada',
@@ -176,7 +193,11 @@ export default function DashboardPage() {
         no_show: 'bg-gray-500/10 text-gray-500',
     }
 
-    if (loading) {
+    const selectedBizName = selectedBusinessId === 'all'
+        ? null
+        : businessOptions.find(b => b.id === selectedBusinessId)?.name
+
+    if (loading && !kpis.totalBusinesses && !recentAppointments.length) {
         return (
             <div className="flex items-center justify-center py-24">
                 <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
@@ -186,24 +207,45 @@ export default function DashboardPage() {
 
     return (
         <div className="space-y-8">
-            {/* Header */}
-            <div>
-                <h1 className="text-3xl font-bold tracking-tight">
-                    Bienvenido{user ? `, ${user.first_name}` : ''}
-                </h1>
-                <p className="text-muted-foreground mt-1">
-                    {business?.name && (
-                        <span>{business.name}</span>
-                    )}
-                    {!business?.name && user?.role === 'super_admin' && '🛡️ Vista global de la plataforma'}
-                    {!business?.name && user?.role !== 'super_admin' && 'Panel de gestión integral'}
-                </p>
+            {/* Header with Business Switcher */}
+            <div className="flex items-start justify-between flex-wrap gap-4">
+                <div>
+                    <h1 className="text-3xl font-bold tracking-tight">
+                        Bienvenido{user ? `, ${user.first_name}` : ''}
+                    </h1>
+                    <p className="text-muted-foreground mt-1">
+                        {selectedBizName && <span>{selectedBizName}</span>}
+                        {!selectedBizName && business?.name && <span>{business.name}</span>}
+                        {!selectedBizName && !business?.name && isSuperAdmin && '🛡️ Vista global de la plataforma'}
+                        {!selectedBizName && !business?.name && !isSuperAdmin && 'Panel de gestión integral'}
+                    </p>
+                </div>
+
+                {/* Business Switcher — Super Admin only */}
+                {isSuperAdmin && businessOptions.length > 0 && (
+                    <Select value={selectedBusinessId} onValueChange={(v) => setSelectedBusinessId(v ?? 'all')}>
+                        <SelectTrigger className="w-[260px] border-border/50 bg-card/80 backdrop-blur-sm">
+                            <Building2 className="w-4 h-4 mr-2 text-violet-500" />
+                            <SelectValue placeholder="Seleccionar negocio" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">
+                                🌐 Todos los negocios
+                            </SelectItem>
+                            {businessOptions.map((biz) => (
+                                <SelectItem key={biz.id} value={biz.id}>
+                                    {biz.name}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                )}
             </div>
 
             {/* KPI Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                {/* Super admin: show businesses count instead of appointments */}
-                {user?.role === 'super_admin' && (
+                {/* Super admin global: show businesses count */}
+                {isSuperAdmin && selectedBusinessId === 'all' && (
                     <Card className="group hover:shadow-lg transition-all duration-300 border-border/50 bg-card/80 backdrop-blur-sm">
                         <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                             <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -278,34 +320,32 @@ export default function DashboardPage() {
                     </CardContent>
                 </Card>
 
-                {user?.role !== 'super_admin' && (
-                    <Card className="group hover:shadow-lg transition-all duration-300 border-border/50 bg-card/80 backdrop-blur-sm">
-                        <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-                            <CardTitle className="text-sm font-medium text-muted-foreground">
-                                Inventario
-                            </CardTitle>
-                            <div className="p-2 rounded-lg bg-orange-500/10 group-hover:bg-orange-500/20 transition-colors">
-                                <Package className="h-4 w-4 text-orange-500" />
-                            </div>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-3xl font-bold">{kpis.lowStockItems}</div>
-                            <div className="flex items-center gap-1 mt-1">
-                                {kpis.lowStockItems > 0 ? (
-                                    <Badge variant="destructive" className="text-xs font-normal">
-                                        <AlertTriangle className="w-3 h-3 mr-1" />
-                                        Stock bajo
-                                    </Badge>
-                                ) : (
-                                    <span className="text-xs text-muted-foreground">
-                                        <CheckCircle2 className="w-3 h-3 inline mr-1 text-green-500" />
-                                        Stock saludable
-                                    </span>
-                                )}
-                            </div>
-                        </CardContent>
-                    </Card>
-                )}
+                <Card className="group hover:shadow-lg transition-all duration-300 border-border/50 bg-card/80 backdrop-blur-sm">
+                    <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                        <CardTitle className="text-sm font-medium text-muted-foreground">
+                            Inventario
+                        </CardTitle>
+                        <div className="p-2 rounded-lg bg-orange-500/10 group-hover:bg-orange-500/20 transition-colors">
+                            <Package className="h-4 w-4 text-orange-500" />
+                        </div>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-3xl font-bold">{kpis.lowStockItems}</div>
+                        <div className="flex items-center gap-1 mt-1">
+                            {kpis.lowStockItems > 0 ? (
+                                <Badge variant="destructive" className="text-xs font-normal">
+                                    <AlertTriangle className="w-3 h-3 mr-1" />
+                                    Stock bajo
+                                </Badge>
+                            ) : (
+                                <span className="text-xs text-muted-foreground">
+                                    <CheckCircle2 className="w-3 h-3 inline mr-1 text-green-500" />
+                                    Stock saludable
+                                </span>
+                            )}
+                        </div>
+                    </CardContent>
+                </Card>
             </div>
 
             {/* Recent Appointments */}
@@ -313,7 +353,7 @@ export default function DashboardPage() {
                 <Card className="border-border/50 bg-card/80 backdrop-blur-sm lg:col-span-2">
                     <CardHeader>
                         <CardTitle className="text-lg">Últimas Citas</CardTitle>
-                        <CardDescription>Las 5 citas más recientes en el sistema</CardDescription>
+                        <CardDescription>Las 5 citas más recientes{selectedBizName ? ` de ${selectedBizName}` : ' en el sistema'}</CardDescription>
                     </CardHeader>
                     <CardContent>
                         {recentAppointments.length === 0 ? (
