@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { DollarSign, Loader2, TrendingUp, TrendingDown, Wallet, ArrowRightLeft, Lock, Unlock, Banknote, FileText, Printer, ShieldCheck, History } from 'lucide-react'
+import { DollarSign, Loader2, TrendingUp, TrendingDown, Wallet, ArrowRightLeft, Lock, Unlock, Banknote, FileText, Printer, ShieldCheck, History, MapPin, AlertTriangle } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -62,6 +62,9 @@ export default function FinanceERPPage() {
 
     const [activeRegId, setActiveRegId] = useState<string | null>(null)
     const [activeLocId, setActiveLocId] = useState<string | null>(null)
+
+    const isGlobalView = selectedLocation === 'all' || !activeLocId
+    const activeLocationName = locationsList.find(l => l.id === activeLocId)?.name || 'Desconocida'
 
     // Printing state
     const [receiptData, setReceiptData] = useState<any>(null)
@@ -138,6 +141,7 @@ export default function FinanceERPPage() {
     useEffect(() => { setLoading(true); fetchData() }, [filterBusinessId, startDate, endDate, selectedLocation])
 
     const handleTransfer = async () => {
+        if (isGlobalView) return toast.error('Debes seleccionar una sede física específica.')
         if (!activeRegId || !activeLocId) return toast.error('Debes abrir caja para transferir.')
         try {
             await transfer_funds({
@@ -180,7 +184,7 @@ export default function FinanceERPPage() {
     }
 
     const handleOpenReg = async () => {
-        if (!activeLocId) return toast.error('No hay sede seleccionada.')
+        if (isGlobalView || !activeLocId) return toast.error('Debes seleccionar una sede física específica.')
         
         // Validation: If difference != 0, justification is mandatory
         const invalid = declarations.find(d => d.difference !== 0 && !d.justification.trim())
@@ -232,7 +236,7 @@ export default function FinanceERPPage() {
     }
 
     const handleCloseReg = async () => {
-        if (!activeLocId) return toast.error('No hay sede seleccionada.')
+        if (isGlobalView || !activeLocId) return toast.error('Debes seleccionar una sede física específica.')
         const invalid = closingDeclarations.find(d => d.difference !== 0 && !d.justification.trim())
         if (invalid) return toast.error(`Justifica la diferencia en: ${invalid.name}`)
 
@@ -265,7 +269,8 @@ export default function FinanceERPPage() {
     }
 
     const handlePayout = async () => {
-        if (!activeRegId || !activeLocId) return toast.error('Caja cerrada.')
+        if (isGlobalView || !activeLocId) return toast.error('Debes seleccionar una sede física específica.')
+        if (!activeRegId) return toast.error('Caja cerrada.')
         try {
             await process_payout({
                 business_id: filterBusinessId!, location_id: activeLocId,
@@ -295,7 +300,8 @@ export default function FinanceERPPage() {
     }
 
     const handleExpense = async () => {
-        if (!activeRegId || !activeLocId) return toast.error('Caja cerrada.')
+        if (isGlobalView || !activeLocId) return toast.error('Debes seleccionar una sede física específica.')
+        if (!activeRegId) return toast.error('Caja cerrada.')
         if (!formExpense.category || !formExpense.account_id || !formExpense.amount) return toast.error('Completa los campos obligatorios.')
         try {
             await create_expense({
@@ -505,9 +511,15 @@ export default function FinanceERPPage() {
 
                 {/* ===== ACCOUNTS ===== */}
                 <TabsContent value="accounts" className="space-y-4 pt-4">
+                    {isGlobalView && (
+                        <div className="bg-yellow-500/10 border-l-4 border-yellow-500 p-4 mb-4 rounded flex items-center gap-3">
+                            <AlertTriangle className="w-5 h-5 text-yellow-500 shrink-0" />
+                            <p className="text-sm text-yellow-600 dark:text-yellow-400"><strong>Modo de solo lectura.</strong> Selecciona una sede física específica en el filtro superior para habilitar las operaciones de caja y movimientos financieros.</p>
+                        </div>
+                    )}
                     <div className="flex justify-between items-center">
                         <h3 className="font-semibold text-lg flex items-center gap-2"><Wallet className="w-5 h-5" /> Cuentas & Saldos</h3>
-                        <Button className="gradient-brand text-white" disabled={!activeRegId} onClick={() => setOpenTransfer(true)}><ArrowRightLeft className="w-4 h-4 mr-2" /> Cuadre Suma Cero</Button>
+                        <Button className="gradient-brand text-white" disabled={isGlobalView || !activeRegId} onClick={() => setOpenTransfer(true)}><ArrowRightLeft className="w-4 h-4 mr-2" /> Cuadre Suma Cero</Button>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                         {accounts.map(acc => (
@@ -522,9 +534,15 @@ export default function FinanceERPPage() {
 
                 {/* ===== EXPENSES ===== */}
                 <TabsContent value="expenses" className="space-y-4 pt-4">
+                    {isGlobalView && (
+                        <div className="bg-yellow-500/10 border-l-4 border-yellow-500 p-4 mb-4 rounded flex items-center gap-3">
+                            <AlertTriangle className="w-5 h-5 text-yellow-500 shrink-0" />
+                            <p className="text-sm text-yellow-600 dark:text-yellow-400"><strong>Modo de solo lectura.</strong> Selecciona una sede física específica en el filtro superior para habilitar las operaciones de caja y movimientos financieros.</p>
+                        </div>
+                    )}
                     <div className="flex justify-between items-center">
                         <h3 className="font-semibold text-lg flex items-center gap-2"><FileText className="w-5 h-5" /> Egresos Operativos</h3>
-                        <Button variant="destructive" disabled={!activeRegId} onClick={() => setOpenExpense(true)}><TrendingDown className="w-4 h-4 mr-2" /> Registrar Gasto</Button>
+                        <Button variant="destructive" disabled={isGlobalView || !activeRegId} onClick={() => setOpenExpense(true)}><TrendingDown className="w-4 h-4 mr-2" /> Registrar Gasto</Button>
                     </div>
                     <Card className="border-border/50 bg-card/80"><CardContent className="p-0 overflow-x-auto">
                         <table className="w-full text-sm">
@@ -542,9 +560,15 @@ export default function FinanceERPPage() {
 
                 {/* ===== PAYOUTS ===== */}
                 <TabsContent value="payouts" className="space-y-4 pt-4">
+                    {isGlobalView && (
+                        <div className="bg-yellow-500/10 border-l-4 border-yellow-500 p-4 mb-4 rounded flex items-center gap-3">
+                            <AlertTriangle className="w-5 h-5 text-yellow-500 shrink-0" />
+                            <p className="text-sm text-yellow-600 dark:text-yellow-400"><strong>Modo de solo lectura.</strong> Selecciona una sede física específica en el filtro superior para habilitar las operaciones de caja y movimientos financieros.</p>
+                        </div>
+                    )}
                     <div className="flex justify-between items-center">
                         <h3 className="font-semibold text-lg flex items-center gap-2"><Banknote className="w-5 h-5" /> Liquidación Profesional</h3>
-                        <Button className="gradient-brand text-white" disabled={!activeRegId} onClick={() => setOpenPayout(true)}><DollarSign className="w-4 h-4 mr-2" /> Generar Payout</Button>
+                        <Button className="gradient-brand text-white" disabled={isGlobalView || !activeRegId} onClick={() => setOpenPayout(true)}><DollarSign className="w-4 h-4 mr-2" /> Generar Payout</Button>
                     </div>
                     <Card className="border-border/50 bg-card/80"><CardContent className="p-0 overflow-x-auto">
                         <table className="w-full text-sm">
@@ -567,14 +591,20 @@ export default function FinanceERPPage() {
 
                 {/* ===== REGISTERS ===== */}
                 <TabsContent value="registers" className="space-y-4 pt-4">
+                    {isGlobalView && (
+                        <div className="bg-yellow-500/10 border-l-4 border-yellow-500 p-4 mb-4 rounded flex items-center gap-3">
+                            <AlertTriangle className="w-5 h-5 text-yellow-500 shrink-0" />
+                            <p className="text-sm text-yellow-600 dark:text-yellow-400"><strong>Modo de solo lectura.</strong> Selecciona una sede física específica en el filtro superior para habilitar las operaciones de caja y movimientos financieros.</p>
+                        </div>
+                    )}
                     <div className="flex justify-between items-center">
                         <h3 className="font-semibold text-lg flex items-center gap-2"><Lock className="w-5 h-5" /> Arqueos de Caja Diarios</h3>
                         <div className="flex gap-2">
                             {activeRegId && (
-                                <Button variant="destructive" onClick={initCloseRegister}><Lock className="w-4 h-4 mr-2" /> Cerrar Caja (Reporte Z)</Button>
+                                <Button variant="destructive" disabled={isGlobalView} onClick={initCloseRegister}><Lock className="w-4 h-4 mr-2" /> Cerrar Caja (Reporte Z)</Button>
                             )}
                             {!activeRegId && (
-                                <Button className="bg-green-600 hover:bg-green-700 text-white" onClick={initOpenRegister}><Unlock className="w-4 h-4 mr-2" /> Realizar Apertura</Button>
+                                <Button className="bg-green-600 hover:bg-green-700 text-white" disabled={isGlobalView} onClick={initOpenRegister}><Unlock className="w-4 h-4 mr-2" /> Realizar Apertura</Button>
                             )}
                         </div>
                     </div>
@@ -625,6 +655,10 @@ export default function FinanceERPPage() {
             <Dialog open={openRegister} onOpenChange={setOpenRegister}>
                 <DialogContent className="max-w-2xl">
                     <DialogHeader><DialogTitle className="flex items-center gap-2 text-brand"><Unlock className="w-5 h-5" /> Apertura Dinámica - Arqueo de Saldos</DialogTitle></DialogHeader>
+                    <div className="bg-brand/10 border-l-4 border-brand p-2 rounded-r flex items-center gap-2 mt-2 text-brand">
+                        <MapPin className="w-4 h-4" />
+                        <span className="text-xs font-bold uppercase tracking-wider">Sucursal de Operación: {activeLocationName}</span>
+                    </div>
                     <div className="py-4 space-y-4">
                         <p className="text-xs text-muted-foreground mb-4">Verifica el saldo físico de cada cuenta antes de iniciar la operación. El sistema pre-llena los valores esperados del cierre anterior.</p>
                         <div className="border border-border/50 rounded-lg overflow-hidden">
@@ -667,7 +701,12 @@ export default function FinanceERPPage() {
             </Dialog>
 
             <Dialog open={openTransfer} onOpenChange={setOpenTransfer}>
-                <DialogContent><DialogHeader><DialogTitle>Transferencia Suma Cero</DialogTitle></DialogHeader>
+                <DialogContent>
+                    <DialogHeader><DialogTitle>Transferencia Suma Cero</DialogTitle></DialogHeader>
+                    <div className="bg-brand/10 border-l-4 border-brand p-2 rounded-r flex items-center gap-2 text-brand mt-2">
+                        <MapPin className="w-4 h-4" />
+                        <span className="text-xs font-bold uppercase tracking-wider">Sucursal de Operación: {activeLocationName}</span>
+                    </div>
                     <div className="grid gap-4 py-4">
                         <div><Label>Origen</Label><Select value={formTransfer.from} onValueChange={(v: string | null)=>setFormTransfer(f=>({...f,from:v || ''}))}><SelectTrigger><SelectValue placeholder="Cuenta origen" /></SelectTrigger><SelectContent>{accounts.map(a=><SelectItem key={a.id} value={a.id}>{a.name} ({format_currency(a.balance)})</SelectItem>)}</SelectContent></Select></div>
                         <div><Label>Destino</Label><Select value={formTransfer.to} onValueChange={(v: string | null)=>setFormTransfer(f=>({...f,to:v || ''}))}><SelectTrigger><SelectValue placeholder="Cuenta destino" /></SelectTrigger><SelectContent>{accounts.map(a=><SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent></Select></div>
@@ -678,7 +717,12 @@ export default function FinanceERPPage() {
             </Dialog>
 
             <Dialog open={openExpense} onOpenChange={setOpenExpense}>
-                <DialogContent><DialogHeader><DialogTitle>Registrar Gasto Operativo</DialogTitle></DialogHeader>
+                <DialogContent>
+                    <DialogHeader><DialogTitle>Registrar Gasto Operativo</DialogTitle></DialogHeader>
+                    <div className="bg-brand/10 border-l-4 border-brand p-2 rounded-r flex items-center gap-2 text-brand mt-2">
+                        <MapPin className="w-4 h-4" />
+                        <span className="text-xs font-bold uppercase tracking-wider">Sucursal de Operación: {activeLocationName}</span>
+                    </div>
                     <div className="grid gap-4 py-4">
                         <div><Label>Categoría</Label><Select value={formExpense.category} onValueChange={(v: string|null)=>setFormExpense(f=>({...f,category:v||''}))}><SelectTrigger><SelectValue placeholder="Ej: Fijo" /></SelectTrigger><SelectContent><SelectItem value="Fijo">Fijo (Arriendo, Nómina)</SelectItem><SelectItem value="Variable">Variable (Servicios, Insumos)</SelectItem></SelectContent></Select></div>
                         <div><Label>Cuenta Base</Label><Select value={formExpense.account_id} onValueChange={(v: string|null)=>setFormExpense(f=>({...f,account_id:v||''}))}><SelectTrigger><SelectValue placeholder="Selecciona Cuenta" /></SelectTrigger><SelectContent>{accounts.map(a=><SelectItem key={a.id} value={a.id}>{a.name} ({format_currency(a.balance)})</SelectItem>)}</SelectContent></Select></div>
@@ -691,6 +735,10 @@ export default function FinanceERPPage() {
             <Dialog open={openCloseReg} onOpenChange={setOpenCloseReg}>
                 <DialogContent className="max-w-2xl">
                     <DialogHeader><DialogTitle className="flex items-center gap-2 text-red-500"><Lock className="w-5 h-5" /> Arqueo Final – Reporte Z</DialogTitle></DialogHeader>
+                    <div className="bg-brand/10 border-l-4 border-brand p-2 rounded-r flex items-center gap-2 mt-2 text-brand">
+                        <MapPin className="w-4 h-4" />
+                        <span className="text-xs font-bold uppercase tracking-wider">Sucursal de Operación: {activeLocationName}</span>
+                    </div>
                     <div className="py-4 space-y-4">
                         <div className="bg-red-500/10 border border-red-500/30 p-3 rounded-md text-xs text-red-500 mb-2 font-mono">
                             <p><strong>Hora de Apertura:</strong> {activeRegId ? new Date(registers.find(r => r.id === activeRegId)?.opened_at || Date.now()).toLocaleString('es-CO', { timeZone: timezone }) : ''}</p>
@@ -737,7 +785,12 @@ export default function FinanceERPPage() {
             </Dialog>
 
             <Dialog open={openPayout} onOpenChange={setOpenPayout}>
-                <DialogContent><DialogHeader><DialogTitle>Liquidación Profesional</DialogTitle></DialogHeader>
+                <DialogContent>
+                    <DialogHeader><DialogTitle>Liquidación Profesional</DialogTitle></DialogHeader>
+                    <div className="bg-brand/10 border-l-4 border-brand p-2 rounded-r flex items-center gap-2 text-brand mt-2">
+                        <MapPin className="w-4 h-4" />
+                        <span className="text-xs font-bold uppercase tracking-wider">Sucursal de Operación: {activeLocationName}</span>
+                    </div>
                     <div className="grid gap-4 py-4">
                         <div><Label>Profesional</Label><Select value={formPayout.prof_id} onValueChange={(v:string|null)=>setFormPayout(f=>({...f,prof_id:v||''}))}><SelectTrigger><SelectValue placeholder="Elegir profesional" /></SelectTrigger><SelectContent>{professionals.map(p=><SelectItem key={p.professional_id} value={p.professional_id}>{p.profile?.first_name} {p.profile?.last_name} ({format_currency(p.net_earnings)})</SelectItem>)}</SelectContent></Select></div>
                         <div><Label>Cuenta</Label><Select value={formPayout.account_id} onValueChange={(v:string|null)=>setFormPayout(f=>({...f,account_id:v||''}))}><SelectTrigger><SelectValue placeholder="Cuenta de pago" /></SelectTrigger><SelectContent>{accounts.map(a=><SelectItem key={a.id} value={a.id}>{a.name} ({format_currency(a.balance)})</SelectItem>)}</SelectContent></Select></div>
