@@ -21,7 +21,7 @@ interface ProductRow { id: string; name: string; sku: string | null; unit: strin
 const emptyForm = { name: '', sku: '', unit: 'ml', cost_price: 0, sell_price: 0, stock_qty: 0, min_stock: 5, is_active: true }
 
 export default function InventoryPage() {
-    const { user, selectedBusinessId } = useAuthStore()
+    const { user, selectedBusinessId, selectedLocationId } = useAuthStore()
     const isSuperAdmin = user?.role === 'super_admin'
     const filterBusinessId = isSuperAdmin ? selectedBusinessId : user?.business_id
 
@@ -38,12 +38,15 @@ export default function InventoryPage() {
     const fetchProducts = async () => {
         if (!filterBusinessId) { setLoading(false); return }
         const supabase = createClient()
-        const { data } = await supabase.from('products').select('*').eq('business_id', filterBusinessId).order('name')
+        let query = supabase.from('products').select('*').eq('business_id', filterBusinessId)
+        if (selectedLocationId !== 'all') query = query.eq('location_id', selectedLocationId)
+        query = query.order('name')
+        const { data } = await query
         if (data) setProducts(data as ProductRow[])
         setLoading(false)
     }
 
-    useEffect(() => { setLoading(true); fetchProducts() }, [filterBusinessId])
+    useEffect(() => { setLoading(true); fetchProducts() }, [filterBusinessId, selectedLocationId])
 
     const openCreate = () => { setEditingId(null); setForm(emptyForm); setDialogOpen(true) }
     const openEdit = (p: ProductRow) => {
@@ -60,7 +63,8 @@ export default function InventoryPage() {
             if (error) { toast.error(error.message); setSaving(false); return }
             toast.success('Producto actualizado')
         } else {
-            const { error } = await supabase.from('products').insert({ ...payload, business_id: filterBusinessId! })
+            if (selectedLocationId === 'all') { toast.error('Selecciona una sede física para crear productos.'); setSaving(false); return }
+            const { error } = await supabase.from('products').insert({ ...payload, business_id: filterBusinessId!, location_id: selectedLocationId })
             if (error) { toast.error(error.message); setSaving(false); return }
             toast.success('Producto creado')
         }

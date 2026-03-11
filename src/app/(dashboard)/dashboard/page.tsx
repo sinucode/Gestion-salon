@@ -39,7 +39,7 @@ interface RecentAppointment {
 }
 
 export default function DashboardPage() {
-    const { user, business, selectedBusinessId } = useAuthStore()
+    const { user, business, selectedBusinessId, selectedLocationId } = useAuthStore()
     const isSuperAdmin = user?.role === 'super_admin'
 
     const [kpis, setKpis] = useState<KPIs>({
@@ -63,6 +63,7 @@ export default function DashboardPage() {
         try {
             let apptQuery = supabase.from('appointments').select('id, status, total_price', { count: 'exact' }).gte('starts_at', startOfDay).lte('starts_at', endOfDay)
             if (filterBusinessId) apptQuery = apptQuery.eq('business_id', filterBusinessId)
+            if (selectedLocationId !== 'all') apptQuery = apptQuery.eq('location_id', selectedLocationId)
             const { data: todayAppts, count: apptCount } = await apptQuery
 
             const pendingApproval = todayAppts?.filter(a => a.status === 'scheduled').length ?? 0
@@ -70,10 +71,12 @@ export default function DashboardPage() {
 
             let clientQuery = supabase.from('profiles').select('id', { count: 'exact' }).eq('role', 'client').eq('is_active', true)
             if (filterBusinessId) clientQuery = clientQuery.eq('business_id', filterBusinessId)
+            if (selectedLocationId !== 'all') clientQuery = clientQuery.eq('location_id', selectedLocationId)
             const { count: clientCount } = await clientQuery
 
             let stockQueryAll = supabase.from('products').select('id, stock_qty, min_stock').eq('is_active', true)
             if (filterBusinessId) stockQueryAll = stockQueryAll.eq('business_id', filterBusinessId)
+            if (selectedLocationId !== 'all') stockQueryAll = stockQueryAll.eq('location_id', selectedLocationId)
             const { data: products } = await stockQueryAll
             const lowStock = products?.filter(p => p.stock_qty <= p.min_stock).length ?? 0
 
@@ -89,6 +92,7 @@ export default function DashboardPage() {
                 .select('id, status, total_price, starts_at, professional:profiles!appointments_professional_id_fkey(first_name, last_name), client:profiles!appointments_client_id_fkey(first_name, last_name)')
                 .order('starts_at', { ascending: false }).limit(5)
             if (filterBusinessId) recentQuery = recentQuery.eq('business_id', filterBusinessId)
+            if (selectedLocationId !== 'all') recentQuery = recentQuery.eq('location_id', selectedLocationId)
             const { data: recent } = await recentQuery
             setRecentAppointments((recent as unknown as RecentAppointment[]) ?? [])
         } catch (error) {
@@ -96,7 +100,7 @@ export default function DashboardPage() {
         } finally {
             setLoading(false)
         }
-    }, [user, isSuperAdmin, selectedBusinessId])
+    }, [user, isSuperAdmin, selectedBusinessId, selectedLocationId])
 
     useEffect(() => { fetchKPIs() }, [fetchKPIs])
 

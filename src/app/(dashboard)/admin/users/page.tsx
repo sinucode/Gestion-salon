@@ -78,21 +78,22 @@ export default function UsersPage() {
         setLoading(false)
     }, [filter_business_id, can_manage_credentials])
 
-    const fetch_locations = useCallback(async () => {
-        if (!filter_business_id) return
-        const supabase = createClient()
-        const { data } = await supabase.from('locations').select('id, name').eq('business_id', filter_business_id).eq('is_active', true)
-        if (data) setLocations(data)
-    }, [filter_business_id])
-
-    useEffect(() => { setLoading(true); fetch_profiles(); fetch_locations() }, [fetch_profiles, fetch_locations])
+    useEffect(() => { setLoading(true); fetch_profiles() }, [fetch_profiles])
 
     const can_edit_target = (target_role: string): boolean => {
         const target_rank = ROLE_RANK[target_role] || 0
         return caller_rank > target_rank
     }
 
-    const open_edit = (p: ProfileListRow) => {
+    const open_edit = async (p: ProfileListRow) => {
+        if (p.business_id) {
+            const supabase = createClient()
+            const { data } = await supabase.from('locations').select('id, name').eq('business_id', p.business_id).eq('is_active', true)
+            setLocations(data || [])
+        } else {
+            setLocations([])
+        }
+
         setEditingId(p.id)
         setEditingRole(p.role)
         setForm({
@@ -262,7 +263,10 @@ export default function UsersPage() {
                             <div className="space-y-4 border rounded-lg p-4 bg-muted/10">
                                 <div>
                                     <Label>Sede Principal</Label>
-                                    <Select value={form.location_id} onValueChange={(v) => setForm(f => ({ ...f, location_id: v || '' }))}>
+                                    <Select 
+                                        value={form.location_id || ''} 
+                                        onValueChange={(v) => setForm(f => ({ ...f, location_id: v || '' }))}
+                                    >
                                         <SelectTrigger><SelectValue placeholder="Seleccione una sede" /></SelectTrigger>
                                         <SelectContent>
                                             {locations.map(loc => (

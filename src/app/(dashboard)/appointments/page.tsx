@@ -35,7 +35,7 @@ const STATUS_LABELS: Record<string, string> = { scheduled: 'Agendada', in_progre
 const STATUS_COLORS: Record<string, string> = { scheduled: 'bg-blue-500/10 text-blue-500', in_progress: 'bg-yellow-500/10 text-yellow-500', completed: 'bg-green-500/10 text-green-500', approved: 'bg-emerald-500/10 text-emerald-500', cancelled: 'bg-red-500/10 text-red-500', no_show: 'bg-gray-500/10 text-gray-500' }
 
 export default function AppointmentsPage() {
-    const { user, selectedBusinessId } = useAuthStore()
+    const { user, selectedBusinessId, selectedLocationId } = useAuthStore()
     const isSuperAdmin = user?.role === 'super_admin'
     const filterBusinessId = isSuperAdmin ? selectedBusinessId : user?.business_id
 
@@ -70,13 +70,25 @@ export default function AppointmentsPage() {
             if (locs) setLocationsList(locs)
         }
 
-        let query = supabase.from('appointments')
-            .select('id, status, total_price, starts_at, ends_at, notes, location_id, professional:profiles!appointments_professional_id_fkey(first_name, last_name), client:profiles!appointments_client_id_fkey(first_name, last_name), services:appointment_services(name:services(name), price:services(price))')
-            .order('starts_at', { ascending: false }).limit(30)
+        let query = supabase
+            .from('appointments')
+            .select(`
+                id, status, total_price, starts_at, ends_at, notes, location_id,
+                professional:profiles!appointments_professional_id_fkey(first_name, last_name),
+                client:profiles!appointments_client_id_fkey(first_name, last_name),
+                services:appointment_services(service:services(name, price))
+            `)
+            .order('starts_at', { ascending: false })
+            .limit(100)
+            
         if (filterBusinessId) query = query.eq('business_id', filterBusinessId)
+        if (selectedLocationId !== 'all') query = query.eq('location_id', selectedLocationId)
+
         const { data } = await query
-        if (data) setAppointments(data as unknown as Appointment[])
-        setLoading(false)
+        if (data) {
+            setAppointments(data as unknown as Appointment[])
+            setLoading(false)
+        }
     }
 
     const openCheckoutModal = async (appt: Appointment) => {
@@ -166,7 +178,7 @@ export default function AppointmentsPage() {
         }
     }
 
-    useEffect(() => { setLoading(true); fetchAppointments() }, [filterBusinessId])
+    useEffect(() => { setLoading(true); fetchAppointments() }, [filterBusinessId, selectedLocationId])
 
     if (loading) return <div className="flex items-center justify-center py-24"><Loader2 className="w-8 h-8 animate-spin text-muted-foreground" /></div>
 
