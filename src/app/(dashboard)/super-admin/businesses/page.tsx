@@ -117,7 +117,7 @@ export default function BusinessesPage() {
     }
 
     const handleHardDelete = async () => {
-        if (!hardDeleteId || confirmName !== hardDeleteName) return
+        if (!hardDeleteId || confirmName !== 'YES') return
         setDeleting(true)
         const supabase = createClient()
         const { error } = await supabase.rpc('hard_delete_business', { business_uuid: hardDeleteId })
@@ -312,11 +312,11 @@ export default function BusinessesPage() {
                                 Los usuarios serán desvinculados del negocio pero sus cuentas permanecerán.
                             </p>
                             <div className="pt-2">
-                                <Label className="text-sm">Escribe <strong className="text-red-600">{hardDeleteName}</strong> para confirmar:</Label>
+                                <Label className="text-sm">Escribe <strong className="text-red-600">YES</strong> para confirmar:</Label>
                                 <Input
                                     value={confirmName}
                                     onChange={e => setConfirmName(e.target.value)}
-                                    placeholder={hardDeleteName}
+                                    placeholder="YES"
                                     className="mt-1 border-red-500/30 focus-visible:ring-red-500"
                                 />
                             </div>
@@ -327,7 +327,7 @@ export default function BusinessesPage() {
                         <Button
                             variant="destructive"
                             onClick={handleHardDelete}
-                            disabled={confirmName !== hardDeleteName || deleting}
+                            disabled={confirmName !== 'YES' || deleting}
                         >
                             {deleting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                             {deleting ? 'Eliminando...' : 'Eliminar Permanentemente'}
