@@ -80,17 +80,31 @@ export default function AppointmentsPage() {
     }
 
     const openCheckoutModal = async (appt: Appointment) => {
+        setIsCheckoutOpen(true)
         setSelectedAppt(appt)
         setExtraProducts([])
         setSelectedAccountId('')
         setProductSearch('')
-        setIsCheckoutOpen(true)
         
         const supabase = createClient()
         const [resProds, resAccs, resReg] = await Promise.all([
-            supabase.from('products').select('id, name, stock_qty, cost_per_unit').eq('location_id', appt.location_id).eq('is_active', true),
-            supabase.from('accounts').select('id, name, balance').eq('location_id', appt.location_id).eq('is_active', true),
-            supabase.from('cash_registers').select('*').eq('location_id', appt.location_id).eq('status', 'open').maybeSingle()
+            // Strict location filtering for products
+            supabase.from('products')
+                .select('id, name, stock_qty, cost_per_unit')
+                .eq('location_id', appt.location_id)
+                .eq('is_active', true)
+                .gt('stock_qty', 0),
+            // Accounts in this location
+            supabase.from('accounts')
+                .select('id, name, balance')
+                .eq('location_id', appt.location_id)
+                .eq('is_active', true),
+            // Open register in this location (Strict)
+            supabase.from('cash_registers')
+                .select('id')
+                .eq('location_id', appt.location_id)
+                .eq('status', 'open')
+                .maybeSingle()
         ])
         
         if (resProds.data) setProductsList(resProds.data as Product[])
