@@ -256,3 +256,86 @@ export async function create_expense(input: {
     revalidatePath('/finance')
     return { success: true }
 }
+
+// ============================================
+// Z-REPORT DETAILS (Detalle de Arqueo)
+// ============================================
+const INCOME_TYPES = ['income', 'direct_sale', 'transfer_in', 'opening_balance', 'adjustment_in']
+const OUTCOME_TYPES = ['expense', 'commission', 'payout', 'transfer_out', 'damage_deduction', 'adjustment_out']
+
+const TYPE_LABELS: Record<string, string> = {
+    income: 'Ingreso Servicio',
+    direct_sale: 'Venta Directa',
+    transfer_in: 'Transferencia Entrada',
+    opening_balance: 'Base Apertura',
+    adjustment_in: 'Sobrante (Ajuste)',
+    expense: 'Gasto Operativo',
+    commission: 'Comisión Profesional',
+    payout: 'Liquidación',
+    transfer_out: 'Transferencia Salida',
+    damage_deduction: 'Descuento Daño',
+    adjustment_out: 'Faltante (Ajuste)',
+    damage_absorb: 'Daño Absorbido'
+}
+
+export async function get_z_report_details(cash_register_id: string) {
+    const supabase = await createClient()
+    await requireRole(supabase, [ROLES.SUPER_ADMIN, ROLES.ADMIN])
+
+    // Fetch register info
+    const { data: reg, error: regErr } = await supabase
+        .from('cash_registers')
+        .select('*, opener:profiles!cash_registers_opened_by_fkey(first_name, last_name), closer:profiles!cash_registers_closed_by_fkey(first_name, last_name)')
+        .eq('id', cash_register_id)
+        .single()
+
+    if (regErr || !reg) throw new Error('Registro de caja no encontrado.')
+
+    // Fetch all movements for this register
+    const { data: movements, error: movErr } = await supabase
+        .from('cash_movements')
+        .select('*, account:accounts(name)')
+        .eq('cash_register_id', cash_register_id)
+        .order('created_at', { ascending: true })
+
+    if (movErr) throw new Error(movErr.message)
+
+    const total_incomes = (movements || [])
+        .filter(m => INCOME_TYPES.includes(m.type))
+        .reduce((acc, m) => acc + Number(m.amount), 0)
+
+    const total_outcomes = (movements || [])
+        .filter(m => OUTCOME_TYPES.includes(m.type))
+        .reduce((acc, m) => acc + Number(m.amount), 0)
+
+    // Group by type for breakdown
+    const breakdown: Record<string, { label: string; total: number; count: number }> = {}
+    for (const m of (movements || [])) {
+        if (!breakdown[m.type]) {
+            breakdown[m.type] = { label: TYPE_LABELS[m.type] || m.type, total: 0, count: 0 }
+        }
+        breakdown[m.type].total += Number(m.amount)
+        breakdown[m.type].count += 1
+    }
+
+    return {
+        register: reg,
+        total_incomes,
+        total_outcomes,
+        base_amount: Number(reg.base_amount),
+        final_amount: reg.final_amount !== null ? Number(reg.final_amount) : null,
+        theoretical_balance: Number(reg.base_amount) + total_incomes - total_outcomes,
+        difference: reg.final_amount !== null
+            ? Number(reg.final_amount) - (Number(reg.base_amount) + total_incomes - total_outcomes)
+            : null,
+        breakdown: Object.entries(breakdown).map(([type, data]) => ({
+            type,
+            is_income: INCOME_TYPES.includes(type),
+            ...data
+        })),
+        opener_name: reg.opener ? `${reg.opener.first_name} ${reg.opener.last_name || ''}` : 'N/A',
+        closer_name: reg.closer ? `${reg.closer.first_name} ${reg.closer.last_name || ''}` : 'N/A',
+        opened_at: reg.opened_at,
+        closed_at: reg.closed_at
+    }
+}

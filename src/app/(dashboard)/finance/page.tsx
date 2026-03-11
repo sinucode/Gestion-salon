@@ -14,7 +14,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/stores'
 import { format_currency } from '@/lib/utils/currency'
 import { toast } from 'sonner'
-import { open_cash_register, close_cash_register, transfer_funds, process_payout, create_expense } from '@/actions/finance'
+import { open_cash_register, close_cash_register, transfer_funds, process_payout, create_expense, get_z_report_details } from '@/actions/finance'
 
 export default function FinanceERPPage() {
     const { user, selectedBusinessId } = useAuthStore()
@@ -75,8 +75,19 @@ export default function FinanceERPPage() {
         if ((isSuperAdmin || isAdmin) && locationsList.length === 0) {
             const { data: locs } = await supabase.from('locations').select('id, name').eq('business_id', filterBusinessId)
             if (locs) {
-                setLocationsList(locs)
-                if (!locFilter && locs.length > 0) locFilter = locs[0].id
+                // Admin multi-sede filtering: only show assigned locations
+                let filteredLocs = locs
+                if (isAdmin && !isSuperAdmin) {
+                    const { data: myProfile } = await supabase.from('profiles').select('location_id, assigned_locations').eq('id', user!.id).single()
+                    if (myProfile) {
+                        const allowed = new Set<string>()
+                        if (myProfile.location_id) allowed.add(myProfile.location_id)
+                        if (myProfile.assigned_locations) myProfile.assigned_locations.forEach((lid: string) => allowed.add(lid))
+                        filteredLocs = locs.filter(l => allowed.has(l.id))
+                    }
+                }
+                setLocationsList(filteredLocs)
+                if (!locFilter && filteredLocs.length > 0) locFilter = filteredLocs[0].id
                 if (!selectedLocation && locFilter) setSelectedLocation(locFilter)
             }
         }
@@ -240,16 +251,13 @@ export default function FinanceERPPage() {
             toast.success('Arqueo Z Completado: Caja Sellada')
             setOpenCloseReg(false)
 
-            // Trigger Z-Report printing
-            const locName = locationsList.find(l => l.id === activeLocId)?.name || 'Sede'
-            setReceiptData({
-                type: 'z_report',
-                date: new Date().toISOString(),
-                location: locName,
-                user: user?.first_name || 'Admin',
-                accounts: closingDeclarations.map(d => ({ name: d.name, real: d.real, diff: d.difference }))
-            })
-            setTimeout(() => window.print(), 500)
+            // Trigger Z-Report printing with details
+            try {
+                const zData = await get_z_report_details(activeRegId!)
+                const locName = locationsList.find(l => l.id === activeLocId)?.name || 'Sede'
+                setReceiptData({ type: 'z_report', location: locName, ...zData })
+                setTimeout(() => window.print(), 500)
+            } catch { /* non-blocking */ }
 
             fetchData()
         } catch(e:any) { toast.error(e.message) }
@@ -345,41 +353,64 @@ export default function FinanceERPPage() {
 
             {receiptData && receiptData.type === 'z_report' && (
                 <div className="hidden print:block text-black print-container font-mono text-sm leading-tight p-2 w-[80mm] mx-auto absolute top-0 left-0 bg-white">
-                    <h2 className="text-center font-bold text-lg mb-1">REPORTE Z</h2>
-                    <h3 className="text-center font-bold text-md mb-1">CIERRE DE CAJA</h3>
-                    <h4 className="text-center text-sm mb-2">{receiptData.location}</h4>
-                    <p className="text-center text-xs mb-4">{new Date(receiptData.date).toLocaleString('es-CO')}</p>
-                    <div className="border-t border-black py-2 mb-2">
-                        <p className="text-xs"><strong>Responsable:</strong> {receiptData.user}</p>
+                    <h2 className="text-center font-bold text-lg mb-0">REPORTE Z</h2>
+                    <h3 className="text-center font-bold text-sm mb-1">AUDITORÍA DE CAJA</h3>
+                    <h4 className="text-center text-xs mb-2">{receiptData.location}</h4>
+                    <div className="border-t border-black py-1 mb-1 text-xs">
+                        <p><strong>Apertura:</strong> {receiptData.opened_at ? new Date(receiptData.opened_at).toLocaleString('es-CO') : '—'}</p>
+                        <p><strong>Cierre:</strong> {receiptData.closed_at ? new Date(receiptData.closed_at).toLocaleString('es-CO') : '—'}</p>
+                        <p><strong>Cajero:</strong> {receiptData.opener_name}</p>
+                        <p><strong>Responsable Cierre:</strong> {receiptData.closer_name}</p>
                     </div>
-                    <div className="border-t border-b border-black py-2 mb-4">
-                        <p className="font-bold text-xs mb-1 uppercase">Detalle por Cuenta:</p>
-                        {receiptData.accounts.map((a: any, i: number) => (
-                            <div key={i} className="flex justify-between items-center mb-1">
-                                <span className="text-xs">{a.name}</span>
-                                <span className="text-xs font-bold">{format_currency(a.real)}</span>
+
+                    <div className="border-t border-black py-1 mb-1">
+                        <p className="font-bold text-xs uppercase mb-1">+ ENTRADAS</p>
+                        {receiptData.breakdown?.filter((b: any) => b.is_income).map((b: any, i: number) => (
+                            <div key={i} className="flex justify-between text-xs">
+                                <span>{b.label} (x{b.count})</span>
+                                <span className="font-bold">+{format_currency(b.total)}</span>
                             </div>
                         ))}
-                    </div>
-                    <div className="flex justify-between items-center font-bold text-lg mb-4">
-                        <span>TOTAL FINAL:</span>
-                        <span>{format_currency(receiptData.accounts.reduce((s: number, a: any) => s + a.real, 0))}</span>
-                    </div>
-                    {receiptData.accounts.some((a: any) => a.diff !== 0) && (
-                        <div className="border-t border-black py-2 mb-4">
-                            <p className="font-bold text-xs mb-1 uppercase">Ajustes Registrados:</p>
-                            {receiptData.accounts.filter((a: any) => a.diff !== 0).map((a: any, i: number) => (
-                                <div key={i} className="flex justify-between text-xs">
-                                    <span>{a.name}</span>
-                                    <span className={a.diff > 0 ? '' : ''}>{a.diff > 0 ? '+' : ''}{format_currency(a.diff)}</span>
-                                </div>
-                            ))}
+                        <div className="flex justify-between text-xs font-bold border-t border-dotted border-black mt-1 pt-1">
+                            <span>TOTAL ENTRADAS</span>
+                            <span>+{format_currency(receiptData.total_incomes)}</span>
                         </div>
-                    )}
+                    </div>
+
+                    <div className="border-t border-black py-1 mb-1">
+                        <p className="font-bold text-xs uppercase mb-1">- SALIDAS</p>
+                        {receiptData.breakdown?.filter((b: any) => !b.is_income).map((b: any, i: number) => (
+                            <div key={i} className="flex justify-between text-xs">
+                                <span>{b.label} (x{b.count})</span>
+                                <span className="font-bold">-{format_currency(b.total)}</span>
+                            </div>
+                        ))}
+                        <div className="flex justify-between text-xs font-bold border-t border-dotted border-black mt-1 pt-1">
+                            <span>TOTAL SALIDAS</span>
+                            <span>-{format_currency(receiptData.total_outcomes)}</span>
+                        </div>
+                    </div>
+
+                    <div className="border-t border-b border-black py-2 my-2 space-y-1">
+                        <div className="flex justify-between text-xs"><span>Base Apertura</span><span>{format_currency(receiptData.base_amount)}</span></div>
+                        <div className="flex justify-between text-xs"><span>+ Entradas</span><span>+{format_currency(receiptData.total_incomes)}</span></div>
+                        <div className="flex justify-between text-xs"><span>- Salidas</span><span>-{format_currency(receiptData.total_outcomes)}</span></div>
+                        <div className="flex justify-between text-xs font-bold border-t border-dotted border-black pt-1"><span>= Saldo Teórico</span><span>{format_currency(receiptData.theoretical_balance)}</span></div>
+                        {receiptData.final_amount !== null && (
+                            <>
+                                <div className="flex justify-between text-xs font-bold"><span>Saldo Físico Declarado</span><span>{format_currency(receiptData.final_amount)}</span></div>
+                                <div className={`flex justify-between text-xs font-bold ${(receiptData.difference ?? 0) === 0 ? '' : 'underline'}`}>
+                                    <span>Diferencia (Descuadre)</span>
+                                    <span>{format_currency(receiptData.difference ?? 0)}</span>
+                                </div>
+                            </>
+                        )}
+                    </div>
+
                     <div className="mt-12 border-t border-black pt-2 text-center">
                         <p className="text-xs mb-8">.....................................................</p>
                         <p className="text-xs font-bold">Firma del Administrador</p>
-                        <p className="text-[10px] mt-2 text-gray-500">Documento de cierre de operación diaria</p>
+                        <p className="text-[10px] mt-2 text-gray-500">Documento inmutable de cierre operativo</p>
                     </div>
                 </div>
             )}
@@ -549,7 +580,7 @@ export default function FinanceERPPage() {
                     <Card className="border-border/50 bg-card/80"><CardContent className="p-0 overflow-x-auto">
                         <table className="w-full text-sm">
                             <thead className="bg-muted/10 border-b border-border/50"><tr className="text-muted-foreground font-medium">
-                                <td className="py-3 px-4">Estado</td><td className="py-3 px-4">Fecha</td><td className="py-3 px-4 text-right">Base Apertura</td><td className="py-3 px-4 text-right">Cierre Real</td><td className="py-3 px-4">Responsable</td>
+                                <td className="py-3 px-4">Estado</td><td className="py-3 px-4">Fecha</td><td className="py-3 px-4 text-right">Base Apertura</td><td className="py-3 px-4 text-right">Cierre Real</td><td className="py-3 px-4">Responsable</td><td className="py-3 px-4 text-center">Reporte</td>
                             </tr></thead>
                             <tbody>
                                 {registers.map(r => (
@@ -559,6 +590,18 @@ export default function FinanceERPPage() {
                                         <td className="py-3 px-4 text-right font-medium">{format_currency(r.base_amount)}</td>
                                         <td className="py-3 px-4 text-right">{r.status==='closed' ? format_currency(r.final_amount) : 'Caja en Progreso'}</td>
                                         <td className="py-3 px-4 text-muted-foreground">{r.opener?.first_name}</td>
+                                        <td className="py-3 px-4 text-center">
+                                            {r.status === 'closed' && (
+                                                <Button variant="ghost" size="sm" onClick={async () => {
+                                                    try {
+                                                        const zData = await get_z_report_details(r.id)
+                                                        const locName = locationsList.find(l => l.id === activeLocId)?.name || 'Sede'
+                                                        setReceiptData({ type: 'z_report', location: locName, ...zData })
+                                                        setTimeout(() => window.print(), 500)
+                                                    } catch(e: any) { toast.error(e.message) }
+                                                }}><Printer className="w-4 h-4" /></Button>
+                                            )}
+                                        </td>
                                     </tr>
                                 ))}
                             </tbody>

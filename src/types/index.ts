@@ -7,6 +7,7 @@ export interface Profile {
     id: string
     business_id: string | null
     location_id: string | null
+    assigned_locations: string[] | null
     role: UserRole
     first_name: string
     last_name: string
