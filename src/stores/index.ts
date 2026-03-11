@@ -13,12 +13,14 @@ interface AuthState {
     location: Location | null
     timezone: string
     isLoading: boolean
-    selectedBusinessId: string | null // super admin business filter
+    selectedBusinessId: string | 'all'
+    selectedLocationId: string | 'all'
     setUser: (user: Profile | null) => void
     setBusiness: (business: Business | null) => void
     setLocation: (location: Location | null) => void
     setLoading: (loading: boolean) => void
-    setSelectedBusinessId: (id: string | null) => void
+    setSelectedBusinessId: (id: string | 'all') => void
+    setSelectedLocationId: (id: string | 'all') => void
     reset: () => void
 }
 
@@ -28,7 +30,8 @@ export const useAuthStore = create<AuthState>((set) => ({
     location: null,
     timezone: DEFAULT_TIMEZONE,
     isLoading: true,
-    selectedBusinessId: typeof window !== 'undefined' ? localStorage.getItem('selectedBusinessId') : null,
+    selectedBusinessId: typeof window !== 'undefined' ? (localStorage.getItem('selectedBusinessId') || 'all') : 'all',
+    selectedLocationId: typeof window !== 'undefined' ? (localStorage.getItem('selectedLocationId') || 'all') : 'all',
     setUser: (user) => set({ user }),
     setBusiness: (business) => set({
         business,
@@ -38,17 +41,32 @@ export const useAuthStore = create<AuthState>((set) => ({
     setLoading: (isLoading) => set({ isLoading }),
     setSelectedBusinessId: (selectedBusinessId) => {
         if (typeof window !== 'undefined') {
-            if (selectedBusinessId) {
+            if (selectedBusinessId && selectedBusinessId !== 'all') {
                 localStorage.setItem('selectedBusinessId', selectedBusinessId)
             } else {
                 localStorage.removeItem('selectedBusinessId')
             }
+            // Cascading reset
+            localStorage.setItem('selectedLocationId', 'all')
         }
-        set({ selectedBusinessId })
+        set({ selectedBusinessId, selectedLocationId: 'all' })
+    },
+    setSelectedLocationId: (selectedLocationId) => {
+        if (typeof window !== 'undefined') {
+            if (selectedLocationId && selectedLocationId !== 'all') {
+                localStorage.setItem('selectedLocationId', selectedLocationId)
+            } else {
+                localStorage.setItem('selectedLocationId', 'all')
+            }
+        }
+        set({ selectedLocationId })
     },
     reset: () => {
-        if (typeof window !== 'undefined') localStorage.removeItem('selectedBusinessId')
-        set({ user: null, business: null, location: null, timezone: DEFAULT_TIMEZONE, isLoading: false, selectedBusinessId: null })
+        if (typeof window !== 'undefined') {
+            localStorage.removeItem('selectedBusinessId')
+            localStorage.removeItem('selectedLocationId')
+        }
+        set({ user: null, business: null, location: null, timezone: DEFAULT_TIMEZONE, isLoading: false, selectedBusinessId: 'all', selectedLocationId: 'all' })
     },
 }))
 
