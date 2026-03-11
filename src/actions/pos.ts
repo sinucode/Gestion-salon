@@ -24,6 +24,8 @@ export async function process_direct_sale(input: {
     const { data: reg } = await supabase.from('cash_registers').select('status').eq('id', input.cash_register_id).single()
     if (!reg || reg.status !== 'open') throw new Error('La caja debe estar abierta para facturar.')
 
+    const { data: { user } } = await supabase.auth.getUser()
+    
     // 1. Create cash movement
     const { data: mov, error: errMov } = await supabase.from('cash_movements').insert({
         business_id: input.business_id,
@@ -32,7 +34,8 @@ export async function process_direct_sale(input: {
         account_id: input.account_id,
         type: 'direct_sale',
         amount: input.total,
-        description: `Venta Directa POS: ${input.client_name || 'Cliente Express'}`
+        description: `Venta Directa POS: ${input.client_name || 'Cliente Express'}`,
+        created_by: user!.id
     }).select().single()
 
     if (errMov) throw new Error(errMov.message)
@@ -116,6 +119,8 @@ export async function create_express_appointment(input: {
 
     await supabase.from('appointment_services').insert(appt_services)
 
+    const { data: { user } } = await supabase.auth.getUser()
+
     // Create cash movement for the service payment
     const { error: errMov } = await supabase.from('cash_movements').insert({
         business_id: input.business_id,
@@ -125,7 +130,8 @@ export async function create_express_appointment(input: {
         professional_id: input.professional_id,
         type: 'direct_sale',
         amount: input.total,
-        description: `Servicio(s) Cita Express: ${input.client_name}`
+        description: `Servicio(s) Cita Express: ${input.client_name}`,
+        created_by: user!.id
     })
     if (errMov) throw new Error(errMov.message)
 

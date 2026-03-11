@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { DollarSign, Loader2, TrendingUp, TrendingDown, Wallet, ArrowRightLeft, Lock, Unlock, Banknote, FileText, Printer } from 'lucide-react'
+import { DollarSign, Loader2, TrendingUp, TrendingDown, Wallet, ArrowRightLeft, Lock, Unlock, Banknote, FileText, Printer, ShieldCheck, History } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -41,6 +41,7 @@ export default function FinanceERPPage() {
     const [professionals, setProfessionals] = useState<any[]>([])
     const [payouts, setPayouts] = useState<any[]>([])
     const [expenses, setExpenses] = useState<any[]>([])
+    const [movements, setMovements] = useState<any[]>([])
 
     // Dialog states
     const [openTransfer, setOpenTransfer] = useState(false)
@@ -51,10 +52,12 @@ export default function FinanceERPPage() {
 
     // Form states
     const [formTransfer, setFormTransfer] = useState({ from: '', to: '', amount: 0, desc: '' })
-    const [formBase, setFormBase] = useState(0)
     const [formClose, setFormClose] = useState({ amount: 0, notes: '' })
     const [formPayout, setFormPayout] = useState({ prof_id: '', account_id: '', amount: 0 })
     const [formExpense, setFormExpense] = useState({ category: '', account_id: '', amount: 0, description: '' })
+    
+    // Multi-account opening declarations
+    const [declarations, setDeclarations] = useState<any[]>([])
 
     const [activeRegId, setActiveRegId] = useState<string | null>(null)
     const [activeLocId, setActiveLocId] = useState<string | null>(null)
@@ -68,7 +71,6 @@ export default function FinanceERPPage() {
         
         let locFilter = selectedLocation || defaultLocationId
         
-        // Fetch locations list for superadmin/admin if not loaded
         if ((isSuperAdmin || isAdmin) && locationsList.length === 0) {
             const { data: locs } = await supabase.from('locations').select('id, name').eq('business_id', filterBusinessId)
             if (locs) {
@@ -83,7 +85,7 @@ export default function FinanceERPPage() {
 
         // Date range filtering for P&L
         let pnlQuery = supabase.from('v_pnl').select('*').eq('business_id', filterBusinessId)
-        if (locFilter) pnlQuery = pnlQuery.eq('location_id', locFilter)
+        if (locFilter && selectedLocation !== 'all') pnlQuery = pnlQuery.eq('location_id', locFilter)
         if (startDate) pnlQuery = pnlQuery.gte('date', startDate)
         if (endDate) pnlQuery = pnlQuery.lte('date', endDate)
 
@@ -93,14 +95,16 @@ export default function FinanceERPPage() {
             { data: resReg },
             { data: resProf },
             { data: resPay },
-            { data: resExp }
+            { data: resExp },
+            { data: resMov }
         ] = await Promise.all([
             pnlQuery,
-            supabase.from('accounts').select('*').eq('location_id', locFilter),
+            supabase.from('accounts').select('*').eq('location_id', locFilter).eq('is_active', true),
             supabase.from('cash_registers').select('*, opener:profiles!cash_registers_opened_by_fkey(first_name), closer:profiles!cash_registers_closed_by_fkey(first_name)').eq('location_id', locFilter).order('created_at', { ascending: false }).limit(20),
             supabase.from('v_professional_earnings').select('*, profile:profiles!v_professional_earnings_professional_id_fkey(first_name, last_name)').eq('location_id', locFilter),
             supabase.from('payouts').select('*, profile:profiles!payouts_professional_id_fkey(first_name)').eq('location_id', locFilter).order('created_at', { ascending: false }).limit(20),
-            supabase.from('operating_expenses').select('*, creator:profiles!operating_expenses_created_by_fkey(first_name), account:accounts!operating_expenses_account_id_fkey(name)').eq('location_id', locFilter).order('created_at', { ascending: false }).limit(20)
+            supabase.from('operating_expenses').select('*, creator:profiles!operating_expenses_created_by_fkey(first_name), account:accounts!operating_expenses_account_id_fkey(name)').eq('location_id', locFilter).order('created_at', { ascending: false }).limit(20),
+            supabase.from('cash_movements').select('*, creator:profiles!cash_movements_created_by_fkey(first_name), account:accounts(name)').eq('location_id', locFilter).order('created_at', { ascending: false }).limit(100)
         ])
 
         if (resPnl) setPnl(resPnl)
@@ -113,6 +117,7 @@ export default function FinanceERPPage() {
         if (resProf) setProfessionals(resProf)
         if (resPay) setPayouts(resPay)
         if (resExp) setExpenses(resExp)
+        if (resMov) setMovements(resMov)
 
         setLoading(false)
     }
@@ -134,11 +139,53 @@ export default function FinanceERPPage() {
         } catch(e:any) { toast.error(e.message) }
     }
 
+    const initOpenRegister = () => {
+        const initialDecs = accounts.map(acc => ({
+            account_id: acc.id,
+            name: acc.name,
+            expected: acc.balance,
+            real: acc.balance, // Pre-filled with expected
+            difference: 0,
+            justification: ''
+        }))
+        setDeclarations(initialDecs)
+        setOpenRegister(true)
+    }
+
+    const updateDeclaration = (idx: number, realValue: number) => {
+        const newDecs = [...declarations]
+        const d = newDecs[idx]
+        d.real = realValue
+        d.difference = d.real - d.expected
+        setDeclarations(newDecs)
+    }
+
+    const updateJustification = (idx: number, text: string) => {
+        const newDecs = [...declarations]
+        newDecs[idx].justification = text
+        setDeclarations(newDecs)
+    }
+
     const handleOpenReg = async () => {
         if (!activeLocId) return toast.error('No hay sede seleccionada.')
+        
+        // Validation: If difference != 0, justification is mandatory
+        const invalid = declarations.find(d => d.difference !== 0 && !d.justification.trim())
+        if (invalid) return toast.error(`Justifica la diferencia en la cuenta: ${invalid.name}`)
+
         try {
-            await open_cash_register({ business_id: filterBusinessId!, location_id: activeLocId, base_amount: formBase })
-            toast.success('Caja Abierta')
+            await open_cash_register({ 
+                business_id: filterBusinessId!, 
+                location_id: activeLocId, 
+                declarations: declarations.map(d => ({
+                    account_id: d.account_id,
+                    expected: d.expected,
+                    real: d.real,
+                    difference: d.difference,
+                    justification: d.justification
+                })) 
+            })
+            toast.success('Caja Abierta y Arqueo Sincronizado')
             setOpenRegister(false)
             fetchData()
         } catch(e:any) { toast.error(e.message) }
@@ -208,7 +255,6 @@ export default function FinanceERPPage() {
         <Card className="border-yellow-500/30 bg-yellow-500/5"><CardContent className="py-4 text-center text-yellow-400">Selecciona un negocio para ver el ERP.</CardContent></Card>
     )
 
-    // Unauthorized for non-admins (Double Check)
     if (!isSuperAdmin && !isAdmin) return (
         <Card className="border-red-500/30 bg-red-500/5"><CardContent className="py-4 text-center text-red-500">Acceso denegado al módulo financiero. Sólo administradores.</CardContent></Card>
     )
@@ -216,11 +262,11 @@ export default function FinanceERPPage() {
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center pr-4 hide-on-print">
-                <div><h1 className="text-2xl font-bold tracking-tight">ERP Financiero</h1><p className="text-muted-foreground text-sm">Control Operativo y Contable (Doble Partida)</p></div>
+                <div><h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2"><ShieldCheck className="w-6 h-6 text-brand" /> ERP Financiero</h1><p className="text-muted-foreground text-sm">Control Operativo e Inmutabilidad Contable</p></div>
                 {activeRegId ? (
-                    <Badge variant="outline" className="border-green-500 text-green-500 bg-green-500/10 px-3 py-1 flex items-center gap-2"><Unlock className="w-4 h-4" /> Caja Abierta</Badge>
+                    <Badge variant="outline" className="border-green-500 text-green-500 bg-green-500/10 px-3 py-1 flex items-center gap-2 animate-pulse"><Unlock className="w-4 h-4" /> Caja Abierta (RLS Activo)</Badge>
                 ) : (
-                    <Badge variant="outline" className="border-red-500 text-red-500 bg-red-500/10 px-3 py-1 flex items-center gap-2"><Lock className="w-4 h-4" /> Caja Cerrada</Badge>
+                    <Badge variant="outline" className="border-red-500 text-red-500 bg-red-500/10 px-3 py-1 flex items-center gap-2"><Lock className="w-4 h-4" /> Caja Cerrada (Auditoría Bloqueada)</Badge>
                 )}
             </div>
 
@@ -229,101 +275,118 @@ export default function FinanceERPPage() {
                     <h2 className="text-center font-bold text-lg mb-2">COMPROBANTE DE PAGO</h2>
                     <h3 className="text-center text-md mb-2">{receiptData.location}</h3>
                     <p className="text-center text-xs mb-4">{new Date(receiptData.date).toLocaleString('es-CO')}</p>
-                    
                     <div className="border-t border-b border-black py-2 mb-4">
                         <p><strong>Recibe:</strong> {receiptData.professional}</p>
                         <p><strong>Concepto:</strong> Liquidación Comercial</p>
                     </div>
-                    
-                    <div className="flex justify-between items-center font-bold text-lg mb-4">
-                        <span>VALOR PAGADO:</span>
-                        <span>{format_currency(receiptData.amount)}</span>
-                    </div>
-                    
-                    <div className="flex justify-between items-center text-xs text-gray-600 mb-8">
-                        <span>Saldo Pendiente:</span>
-                        <span>{format_currency(receiptData.balance)}</span>
-                    </div>
-
+                    <div className="flex justify-between items-center font-bold text-lg mb-4"><span>VALOR PAGADO:</span><span>{format_currency(receiptData.amount)}</span></div>
+                    <div className="flex justify-between items-center text-xs text-gray-600 mb-8"><span>Saldo Pendiente:</span><span>{format_currency(receiptData.balance)}</span></div>
                     <div className="mt-12 border-t border-black pt-2 text-center">
                         <p className="text-xs mb-8">.....................................................</p>
                         <p className="text-xs font-bold">Firma del Profesional</p>
-                        <p className="text-[10px] mt-2 text-gray-500">Documento de constancia de egreso operativo</p>
                     </div>
                 </div>
             )}
 
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full hide-on-print">
-                <TabsList className="grid grid-cols-5 bg-muted/30">
+                <TabsList className="grid grid-cols-6 bg-muted/30">
                     <TabsTrigger value="pnl">PyG Gerencial</TabsTrigger>
-                    <TabsTrigger value="accounts">Suma Cero & Cuentas</TabsTrigger>
+                    <TabsTrigger value="ledger">Libro Mayor</TabsTrigger>
+                    <TabsTrigger value="accounts">Cuentas Suma Cero</TabsTrigger>
                     <TabsTrigger value="expenses">Gastos Op.</TabsTrigger>
                     <TabsTrigger value="payouts">Liquidaciones</TabsTrigger>
-                    <TabsTrigger value="registers">Cierres de Caja</TabsTrigger>
+                    <TabsTrigger value="registers">Cajas</TabsTrigger>
                 </TabsList>
 
                 {/* ===== P&L ===== */}
                 <TabsContent value="pnl" className="space-y-4 pt-4">
                     <div className="flex flex-col sm:flex-row gap-4 items-end bg-muted/20 p-4 rounded-lg border border-border/50">
-                        <div className="grid gap-1.5 flex-1">
-                            <Label>Desde</Label>
-                            <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
-                        </div>
-                        <div className="grid gap-1.5 flex-1">
-                            <Label>Hasta</Label>
-                            <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
-                        </div>
+                        <div className="grid gap-1.5 flex-1"><Label>Desde</Label><Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} /></div>
+                        <div className="grid gap-1.5 flex-1"><Label>Hasta</Label><Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} /></div>
                         {(isSuperAdmin || isAdmin) && locationsList.length > 0 && (
                             <div className="grid gap-1.5 flex-1">
-                                <Label>Reporte de Sede</Label>
+                                <Label>Sede de Reporte</Label>
                                 <Select value={selectedLocation} onValueChange={(v: string | null) => setSelectedLocation(v || '')}>
-                                    <SelectTrigger><SelectValue placeholder="Todas" /></SelectTrigger>
+                                    <SelectTrigger><SelectValue placeholder="Sede" /></SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="all">Consolidado Global</SelectItem>
+                                        <SelectItem value="all">Consolidado Total</SelectItem>
                                         {locationsList.map(l => <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>)}
                                     </SelectContent>
                                 </Select>
                             </div>
                         )}
-                        <Button variant="outline" onClick={() => fetchData()}>Filtrar</Button>
+                        <Button variant="outline" onClick={() => fetchData()}>Refrescar Informe</Button>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                        <Card className="border-border/50 bg-card/80 backdrop-blur-sm">
-                            <CardHeader className="pb-2"><CardTitle className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Ingresos Brutos</CardTitle></CardHeader>
-                            <CardContent><div className="text-2xl font-bold flex items-center gap-2"><TrendingUp className="w-5 h-5 text-green-500" />{format_currency(pnl.reduce((a,c)=>a+(c.gross_income || 0),0))}</div>
-                            <p className="text-xs text-muted-foreground mt-1">Ventas Libres + Citas</p></CardContent>
+                        <Card className="border-border/50 bg-card/80 backdrop-blur-sm shadow-md">
+                            <CardHeader className="pb-2"><CardTitle className="text-xs font-bold text-muted-foreground uppercase">Ingresos Brutos</CardTitle></CardHeader>
+                            <CardContent><div className="text-2xl font-bold flex items-center gap-2"><TrendingUp className="w-5 h-5 text-green-500" />{format_currency(pnl.reduce((a,c)=>a+(c.gross_income || 0),0))}</div></CardContent>
                         </Card>
-                        <Card className="border-border/50 bg-card/80 backdrop-blur-sm">
-                            <CardHeader className="pb-2"><CardTitle className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Costos de Venta</CardTitle></CardHeader>
-                            <CardContent><div className="text-2xl font-bold flex items-center gap-2"><TrendingDown className="w-5 h-5 text-red-400" />{format_currency(pnl.reduce((a,c)=>a+(c.cost_of_sales || 0),0))}</div>
-                            <p className="text-xs text-muted-foreground mt-1">Inv. Consumido + Comisiones</p></CardContent>
+                        <Card className="border-border/50 bg-card/80 backdrop-blur-sm shadow-md">
+                            <CardHeader className="pb-2"><CardTitle className="text-xs font-bold text-muted-foreground uppercase">Costos de Venta</CardTitle></CardHeader>
+                            <CardContent><div className="text-2xl font-bold flex items-center gap-2 text-red-400"><TrendingDown className="w-5 h-5" />{format_currency(pnl.reduce((a,c)=>a+(c.cost_of_sales || 0),0))}</div></CardContent>
                         </Card>
-                        <Card className="border-border/50 bg-card/80 backdrop-blur-sm">
-                            <CardHeader className="pb-2"><CardTitle className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Utilidad Bruta</CardTitle></CardHeader>
-                            <CardContent><div className="text-2xl font-bold flex items-center gap-2"><Wallet className="w-5 h-5 text-brand" />{format_currency(pnl.reduce((a,c)=>a+(c.gross_profit || 0),0))}</div>
-                            <p className="text-xs text-muted-foreground mt-1">Ingresos - Costos Venta</p></CardContent>
+                        <Card className="border-border/50 bg-card/80 backdrop-blur-sm shadow-md">
+                            <CardHeader className="pb-2"><CardTitle className="text-xs font-bold text-muted-foreground uppercase">Utilidad Bruta</CardTitle></CardHeader>
+                            <CardContent><div className="text-2xl font-bold text-brand">{format_currency(pnl.reduce((a,c)=>a+(c.gross_profit || 0),0))}</div></CardContent>
                         </Card>
-                        <Card className="border-border/50 bg-gradient-to-br from-card to-muted bg-card/80 backdrop-blur-sm shadow-sm ring-1 ring-brand/20">
-                            <CardHeader className="pb-2"><CardTitle className="text-xs font-bold text-brand uppercase tracking-wider">Utilidad Neta Operativa</CardTitle></CardHeader>
-                            <CardContent><div className="text-2xl font-bold flex items-center gap-2 text-brand"><Banknote className="w-5 h-5" />{format_currency(pnl.reduce((a,c)=>a+(c.net_operating_profit || 0),0))}</div>
-                            <p className="text-xs text-muted-foreground mt-1">Restando Gastos Operativos</p></CardContent>
+                        <Card className="border-border/50 bg-gradient-to-br from-brand/10 to-transparent bg-card shadow-lg ring-1 ring-brand/30">
+                            <CardHeader className="pb-2"><CardTitle className="text-xs font-bold text-brand uppercase">Utilidad Neta Op.</CardTitle></CardHeader>
+                            <CardContent><div className="text-2xl font-bold text-white">{format_currency(pnl.reduce((a,c)=>a+(c.net_operating_profit || 0),0))}</div></CardContent>
                         </Card>
                     </div>
+                </TabsContent>
+
+                {/* ===== LEDGER / LIBRO MAYOR ===== */}
+                <TabsContent value="ledger" className="space-y-4 pt-4">
+                    <div className="flex justify-between items-center">
+                        <h3 className="font-semibold text-lg flex items-center gap-2"><History className="w-5 h-5" /> Libro Mayor Central (Libro de Caja)</h3>
+                        <div className="text-xs text-muted-foreground bg-muted/50 px-2 py-1 rounded">Visualizando últimos 100 movimientos inmutables</div>
+                    </div>
+                    <Card className="border-border/50 bg-card/80 backdrop-blur-sm"><CardContent className="p-0 overflow-hidden">
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                                <thead className="bg-muted/30"><tr className="text-muted-foreground font-medium border-b border-border/50">
+                                    <th className="py-3 px-4 text-left">Fecha/Hora</th>
+                                    <th className="py-3 px-4 text-left">Cuenta</th>
+                                    <th className="py-3 px-4 text-left">Concepto</th>
+                                    <th className="py-3 px-4 text-left">Responsable</th>
+                                    <th className="py-3 px-4 text-right">Valor</th>
+                                </tr></thead>
+                                <tbody>
+                                    {movements.map(m => {
+                                        const isIngreso = ['income', 'direct_sale', 'transfer_in', 'opening_balance', 'adjustment_in'].includes(m.type)
+                                        return (
+                                            <tr key={m.id} className="border-b border-border/20 hover:bg-muted/10 transition-colors">
+                                                <td className="py-3 px-4 text-xs font-mono">{new Date(m.created_at).toLocaleString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
+                                                <td className="py-3 px-4 font-medium">{m.account?.name}</td>
+                                                <td className="py-3 px-4 text-muted-foreground">{m.description}</td>
+                                                <td className="py-3 px-4 text-xs italic">{m.creator?.first_name || 'Sistema'}</td>
+                                                <td className={`py-3 px-4 text-right font-bold ${isIngreso ? 'text-green-500' : 'text-red-500'}`}>
+                                                    {isIngreso ? '+' : '-'}{format_currency(m.amount)}
+                                                </td>
+                                            </tr>
+                                        )
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    </CardContent></Card>
                 </TabsContent>
 
                 {/* ===== ACCOUNTS ===== */}
                 <TabsContent value="accounts" className="space-y-4 pt-4">
                     <div className="flex justify-between items-center">
-                        <h3 className="font-semibold text-lg flex items-center gap-2"><Wallet className="w-5 h-5" /> Cuentas Dinámicas</h3>
+                        <h3 className="font-semibold text-lg flex items-center gap-2"><Wallet className="w-5 h-5" /> Cuentas & Saldos</h3>
                         <Button className="gradient-brand text-white" disabled={!activeRegId} onClick={() => setOpenTransfer(true)}><ArrowRightLeft className="w-4 h-4 mr-2" /> Cuadre Suma Cero</Button>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                         {accounts.map(acc => (
-                            <Card key={acc.id} className="border-border/50 bg-card/80 relative overflow-hidden">
-                                <div className={`absolute top-0 left-0 w-1 h-full ${acc.type === 'cash' ? 'bg-green-500' : 'bg-blue-500'}`} />
-                                <CardHeader className="pb-2 pl-6"><CardTitle className="text-md">{acc.name}</CardTitle></CardHeader>
-                                <CardContent className="pl-6"><div className="text-2xl font-mono font-bold">{format_currency(acc.balance)}</div></CardContent>
+                            <Card key={acc.id} className="border-border/50 bg-card/80 overflow-hidden group hover:border-brand/40 transition-border">
+                                <div className={`h-1 w-full ${acc.type === 'cash' ? 'bg-green-500' : 'bg-blue-500'}`} />
+                                <CardHeader className="py-3"><CardTitle className="text-sm font-medium text-muted-foreground">{acc.name}</CardTitle></CardHeader>
+                                <CardContent><div className="text-2xl font-mono font-bold tracking-tighter">{format_currency(acc.balance)}</div></CardContent>
                             </Card>
                         ))}
                     </div>
@@ -332,23 +395,17 @@ export default function FinanceERPPage() {
                 {/* ===== EXPENSES ===== */}
                 <TabsContent value="expenses" className="space-y-4 pt-4">
                     <div className="flex justify-between items-center">
-                        <h3 className="font-semibold text-lg flex items-center gap-2"><FileText className="w-5 h-5" /> Registro de Egresos</h3>
-                        <Button variant="destructive" disabled={!activeRegId} onClick={() => setOpenExpense(true)}><TrendingDown className="w-4 h-4 mr-2" /> Registrar Gasto Operativo</Button>
+                        <h3 className="font-semibold text-lg flex items-center gap-2"><FileText className="w-5 h-5" /> Egresos Operativos</h3>
+                        <Button variant="destructive" disabled={!activeRegId} onClick={() => setOpenExpense(true)}><TrendingDown className="w-4 h-4 mr-2" /> Registrar Gasto</Button>
                     </div>
-                    <Card className="border-border/50 bg-card/80"><CardContent className="p-0">
+                    <Card className="border-border/50 bg-card/80"><CardContent className="p-0 overflow-x-auto">
                         <table className="w-full text-sm">
-                            <thead className="border-b border-border/50"><tr className="text-muted-foreground font-medium">
-                                <td className="py-3 px-4">Fecha</td><td className="py-3 px-4">Categoría</td><td className="py-3 px-4">Descripción</td><td className="py-3 px-4">Cuenta Base</td><td className="py-3 px-4 text-right">Monto</td>
+                            <thead className="bg-muted/10 border-b border-border/50"><tr className="text-muted-foreground font-medium">
+                                <td className="py-3 px-4">Fecha</td><td className="py-3 px-4">Categoría</td><td className="py-3 px-4">Descripción</td><td className="py-3 px-4">Cuenta</td><td className="py-3 px-4 text-right">Valor</td>
                             </tr></thead>
                             <tbody>
                                 {expenses.map(e => (
-                                    <tr key={e.id} className="border-b border-border/20">
-                                        <td className="py-3 px-4">{new Date(e.created_at).toLocaleDateString('es-CO')}</td>
-                                        <td className="py-3 px-4"><Badge variant="outline">{e.category}</Badge></td>
-                                        <td className="py-3 px-4 text-muted-foreground">{e.description}</td>
-                                        <td className="py-3 px-4">{e.account?.name}</td>
-                                        <td className="py-3 px-4 text-right text-red-500 font-bold">{format_currency(e.amount)}</td>
-                                    </tr>
+                                    <tr key={e.id} className="border-b border-border/20"><td className="py-3 px-4">{new Date(e.created_at).toLocaleDateString()}</td><td className="py-3 px-4"><Badge variant="secondary">{e.category}</Badge></td><td className="py-3 px-4">{e.description}</td><td className="py-3 px-4">{e.account?.name}</td><td className="py-3 px-4 text-right text-red-500 font-bold">{format_currency(e.amount)}</td></tr>
                                 ))}
                             </tbody>
                         </table>
@@ -358,13 +415,13 @@ export default function FinanceERPPage() {
                 {/* ===== PAYOUTS ===== */}
                 <TabsContent value="payouts" className="space-y-4 pt-4">
                     <div className="flex justify-between items-center">
-                        <h3 className="font-semibold text-lg flex items-center gap-2"><Banknote className="w-5 h-5" /> Estado de Profesionales</h3>
-                        <Button className="gradient-brand text-white" disabled={!activeRegId} onClick={() => setOpenPayout(true)}><DollarSign className="w-4 h-4 mr-2" /> Liquidar (Payout)</Button>
+                        <h3 className="font-semibold text-lg flex items-center gap-2"><Banknote className="w-5 h-5" /> Liquidación Profesional</h3>
+                        <Button className="gradient-brand text-white" disabled={!activeRegId} onClick={() => setOpenPayout(true)}><DollarSign className="w-4 h-4 mr-2" /> Generar Payout</Button>
                     </div>
-                    <Card className="border-border/50 bg-card/80"><CardContent className="p-0">
+                    <Card className="border-border/50 bg-card/80"><CardContent className="p-0 overflow-x-auto">
                         <table className="w-full text-sm">
-                            <thead className="border-b border-border/50"><tr className="text-muted-foreground font-medium">
-                                <td className="py-3 px-4">Profesional</td><td className="py-3 px-4 text-right">Producido</td><td className="py-3 px-4 text-right">Comisión a Pagar</td><td className="py-3 px-4 text-right">Descuentos Daños</td>
+                            <thead className="bg-muted/10 border-b border-border/50"><tr className="text-muted-foreground font-medium">
+                                <td className="py-3 px-4">Profesional</td><td className="py-3 px-4 text-right">Acumulado</td><td className="py-3 px-4 text-right">Comisión Neta</td><td className="py-3 px-4 text-right">Descuentos</td>
                             </tr></thead>
                             <tbody>
                                 {professionals.map((p, i) => (
@@ -372,7 +429,7 @@ export default function FinanceERPPage() {
                                         <td className="py-3 px-4">{p.profile?.first_name} {p.profile?.last_name}</td>
                                         <td className="py-3 px-4 text-right">{format_currency(p.gross_income)}</td>
                                         <td className="py-3 px-4 text-right text-brand font-bold">{format_currency(p.commission_earned)}</td>
-                                        <td className="py-3 px-4 text-right text-red-500">{format_currency(p.damage_deducted)}</td>
+                                        <td className="py-3 px-4 text-right text-red-400">{format_currency(p.damage_deducted)}</td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -383,25 +440,21 @@ export default function FinanceERPPage() {
                 {/* ===== REGISTERS ===== */}
                 <TabsContent value="registers" className="space-y-4 pt-4">
                     <div className="flex justify-between items-center">
-                        <h3 className="font-semibold text-lg flex items-center gap-2"><Lock className="w-5 h-5" /> Arqueos de Caja</h3>
-                        {activeRegId ? (
-                             <Button variant="destructive" onClick={() => setOpenCloseReg(true)}><Lock className="w-4 h-4 mr-2" /> Cerrar Caja (Bloquear RLS)</Button>
-                        ) : (
-                             <Button className="bg-green-600 hover:bg-green-700 text-white" onClick={() => setOpenRegister(true)}><Unlock className="w-4 h-4 mr-2" /> Abrir Caja</Button>
-                        )}
+                        <h3 className="font-semibold text-lg flex items-center gap-2"><Lock className="w-5 h-5" /> Arqueos de Caja Diarios</h3>
+                        {!activeRegId && <Button className="bg-green-600 hover:bg-green-700 text-white" onClick={initOpenRegister}><Unlock className="w-4 h-4 mr-2" /> Realizar Apertura</Button>}
                     </div>
-                    <Card className="border-border/50 bg-card/80"><CardContent className="p-0">
+                    <Card className="border-border/50 bg-card/80"><CardContent className="p-0 overflow-x-auto">
                         <table className="w-full text-sm">
-                            <thead className="border-b border-border/50"><tr className="text-muted-foreground font-medium">
-                                <td className="py-3 px-4">Fecha</td><td className="py-3 px-4">Estado</td><td className="py-3 px-4 text-right">Base</td><td className="py-3 px-4 text-right">Cierre</td><td className="py-3 px-4">Responsable</td>
+                            <thead className="bg-muted/10 border-b border-border/50"><tr className="text-muted-foreground font-medium">
+                                <td className="py-3 px-4">Estado</td><td className="py-3 px-4">Fecha</td><td className="py-3 px-4 text-right">Base Apertura</td><td className="py-3 px-4 text-right">Cierre Real</td><td className="py-3 px-4">Responsable</td>
                             </tr></thead>
                             <tbody>
                                 {registers.map(r => (
-                                    <tr key={r.id} className="border-b border-border/20 hover:bg-muted/10">
-                                        <td className="py-3 px-4">{new Date(r.opened_at).toLocaleDateString('es-CO')}</td>
-                                        <td className="py-3 px-4"><Badge variant="outline" className={r.status==='open'?'text-green-500':'text-gray-500'}>{r.status}</Badge></td>
-                                        <td className="py-3 px-4 text-right">{format_currency(r.base_amount)}</td>
-                                        <td className="py-3 px-4 text-right font-medium">{r.final_amount !== null ? format_currency(r.final_amount) : '—'}</td>
+                                    <tr key={r.id} className="border-b border-border/20">
+                                        <td className="py-3 px-4"><Badge variant={r.status==='open'?'default':'secondary'}>{r.status}</Badge></td>
+                                        <td className="py-3 px-4">{new Date(r.opened_at).toLocaleDateString()}</td>
+                                        <td className="py-3 px-4 text-right font-medium">{format_currency(r.base_amount)}</td>
+                                        <td className="py-3 px-4 text-right">{r.status==='closed' ? format_currency(r.final_amount) : 'Caja en Progreso'}</td>
                                         <td className="py-3 px-4 text-muted-foreground">{r.opener?.first_name}</td>
                                     </tr>
                                 ))}
@@ -411,64 +464,93 @@ export default function FinanceERPPage() {
                 </TabsContent>
             </Tabs>
 
+            {/* DIALOGS */}
+            <Dialog open={openRegister} onOpenChange={setOpenRegister}>
+                <DialogContent className="max-w-2xl">
+                    <DialogHeader><DialogTitle className="flex items-center gap-2 text-brand"><Unlock className="w-5 h-5" /> Apertura Dinámica - Arqueo de Saldos</DialogTitle></DialogHeader>
+                    <div className="py-4 space-y-4">
+                        <p className="text-xs text-muted-foreground mb-4">Verifica el saldo físico de cada cuenta antes de iniciar la operación. El sistema pre-llena los valores esperados del cierre anterior.</p>
+                        <div className="border border-border/50 rounded-lg overflow-hidden">
+                            <table className="w-full text-sm">
+                                <thead className="bg-muted/30 font-medium"><tr>
+                                    <td className="p-2">Cuenta</td><td className="p-2 text-right">Esperado</td><td className="p-2 text-right">Real Físico</td><td className="p-2 text-right">Diferencia</td>
+                                </tr></thead>
+                                <tbody>
+                                    {declarations.map((d, i) => (
+                                        <tr key={i} className="border-t border-border/30">
+                                            <td className="p-2 font-medium">{d.name}</td>
+                                            <td className="p-2 text-right text-xs font-mono">{format_currency(d.expected)}</td>
+                                            <td className="p-2 text-right">
+                                                <Input type="number" value={d.real} className="h-8 w-24 text-right ml-auto" onChange={e => updateDeclaration(i, Number(e.target.value))} />
+                                            </td>
+                                            <td className={`p-2 text-right font-bold ${d.difference === 0 ? 'text-muted-foreground' : d.difference > 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                                {format_currency(d.difference)}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                        {declarations.some(d => d.difference !== 0) && (
+                            <div className="space-y-3 bg-red-500/5 p-3 rounded-lg border border-red-500/20">
+                                <Label className="text-red-500 font-bold flex items-center gap-1"><ShieldCheck className="w-4 h-4" /> Justificación de Discrepancias (Obligatorio)</Label>
+                                {declarations.map((d, i) => d.difference !== 0 && (
+                                    <div key={i} className="space-y-1">
+                                        <span className="text-[10px] uppercase font-bold text-muted-foreground">{d.name}</span>
+                                        <Input placeholder={`Razón del ${d.difference > 0 ? 'Sobrante' : 'Faltante'}...`} value={d.justification} onChange={e => updateJustification(i, e.target.value)} className="h-8 text-xs border-red-500/30" />
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                    <DialogFooter>
+                        <Button className="w-full gradient-brand text-white shadow-lg" onClick={handleOpenReg} disabled={declarations.some(d => d.difference !== 0 && !d.justification.trim())}>Confirmar y Abrir Caja</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
             <Dialog open={openTransfer} onOpenChange={setOpenTransfer}>
                 <DialogContent><DialogHeader><DialogTitle>Transferencia Suma Cero</DialogTitle></DialogHeader>
                     <div className="grid gap-4 py-4">
-                        <div><Label>Origen (Resta)</Label><Select value={formTransfer.from} onValueChange={(v: string | null)=>setFormTransfer(f=>({...f,from:v || ''}))}><SelectTrigger><SelectValue placeholder="Cuenta origen" /></SelectTrigger><SelectContent>{accounts.map(a=><SelectItem key={a.id} value={a.id}>{a.name} ({format_currency(a.balance)})</SelectItem>)}</SelectContent></Select></div>
-                        <div><Label>Destino (Suma)</Label><Select value={formTransfer.to} onValueChange={(v: string | null)=>setFormTransfer(f=>({...f,to:v || ''}))}><SelectTrigger><SelectValue placeholder="Cuenta destino" /></SelectTrigger><SelectContent>{accounts.map(a=><SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent></Select></div>
-                        <div><Label>Monto EXACTO a mover</Label><Input type="number" value={formTransfer.amount} onChange={e=>setFormTransfer(f=>({...f,amount:Number(e.target.value)}))} /></div>
-                        <div><Label>Descripción (Revisión Auditoría)</Label><Input value={formTransfer.desc} onChange={e=>setFormTransfer(f=>({...f,desc:e.target.value}))} /></div>
+                        <div><Label>Origen</Label><Select value={formTransfer.from} onValueChange={(v: string | null)=>setFormTransfer(f=>({...f,from:v || ''}))}><SelectTrigger><SelectValue placeholder="Cuenta origen" /></SelectTrigger><SelectContent>{accounts.map(a=><SelectItem key={a.id} value={a.id}>{a.name} ({format_currency(a.balance)})</SelectItem>)}</SelectContent></Select></div>
+                        <div><Label>Destino</Label><Select value={formTransfer.to} onValueChange={(v: string | null)=>setFormTransfer(f=>({...f,to:v || ''}))}><SelectTrigger><SelectValue placeholder="Cuenta destino" /></SelectTrigger><SelectContent>{accounts.map(a=><SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent></Select></div>
+                        <div><Label>Monto</Label><Input type="number" value={formTransfer.amount} onChange={e=>setFormTransfer(f=>({...f,amount:Number(e.target.value)}))} /></div>
+                        <div><Label>Descripción</Label><Input value={formTransfer.desc} onChange={e=>setFormTransfer(f=>({...f,desc:e.target.value}))} /></div>
                     </div>
-                <DialogFooter><Button onClick={handleTransfer} disabled={!formTransfer.from || !formTransfer.to || !formTransfer.amount}>Ejecutar Suma Cero</Button></DialogFooter></DialogContent>
+                <DialogFooter><Button className="w-full gradient-brand text-white" onClick={handleTransfer} disabled={!formTransfer.from || !formTransfer.to || !formTransfer.amount}>Ejecutar Traspaso</Button></DialogFooter></DialogContent>
             </Dialog>
 
             <Dialog open={openExpense} onOpenChange={setOpenExpense}>
                 <DialogContent><DialogHeader><DialogTitle>Registrar Gasto Operativo</DialogTitle></DialogHeader>
                     <div className="grid gap-4 py-4">
-                        <div><Label>Categoría de Gasto</Label>
-                            <Select value={formExpense.category} onValueChange={(v: string | null)=>setFormExpense(f=>({...f,category:v || ''}))}>
-                                <SelectTrigger><SelectValue placeholder="Ej: Fijo" /></SelectTrigger>
-                                <SelectContent><SelectItem value="Fijo">Fijo (Arriendo, Nómina, Suscripciones)</SelectItem><SelectItem value="Variable">Variable (Servicios P., Insumos Aseo)</SelectItem></SelectContent>
-                            </Select>
-                        </div>
-                        <div><Label>Sustraer Dinero De:</Label><Select value={formExpense.account_id} onValueChange={(v: string | null)=>setFormExpense(f=>({...f,account_id:v || ''}))}><SelectTrigger><SelectValue placeholder="Selecciona Cuenta" /></SelectTrigger><SelectContent>{accounts.map(a=><SelectItem key={a.id} value={a.id}>{a.name} ({format_currency(a.balance)})</SelectItem>)}</SelectContent></Select></div>
-                        <div><Label>Monto del Gasto</Label><Input type="number" value={formExpense.amount} onChange={e=>setFormExpense(f=>({...f,amount:Number(e.target.value)}))} /></div>
-                        <div><Label>Descripción Breve</Label><Input value={formExpense.description} onChange={e=>setFormExpense(f=>({...f,description:e.target.value}))} /></div>
+                        <div><Label>Categoría</Label><Select value={formExpense.category} onValueChange={(v: string|null)=>setFormExpense(f=>({...f,category:v||''}))}><SelectTrigger><SelectValue placeholder="Ej: Fijo" /></SelectTrigger><SelectContent><SelectItem value="Fijo">Fijo (Arriendo, Nómina)</SelectItem><SelectItem value="Variable">Variable (Servicios, Insumos)</SelectItem></SelectContent></Select></div>
+                        <div><Label>Cuenta Base</Label><Select value={formExpense.account_id} onValueChange={(v: string|null)=>setFormExpense(f=>({...f,account_id:v||''}))}><SelectTrigger><SelectValue placeholder="Selecciona Cuenta" /></SelectTrigger><SelectContent>{accounts.map(a=><SelectItem key={a.id} value={a.id}>{a.name} ({format_currency(a.balance)})</SelectItem>)}</SelectContent></Select></div>
+                        <div><Label>Monto</Label><Input type="number" value={formExpense.amount} onChange={e=>setFormExpense(f=>({...f,amount:Number(e.target.value)}))} /></div>
+                        <div><Label>Descripción</Label><Input value={formExpense.description} onChange={e=>setFormExpense(f=>({...f,description:e.target.value}))} /></div>
                     </div>
-                <DialogFooter><Button variant="destructive" onClick={handleExpense} disabled={!formExpense.category || !formExpense.account_id || !formExpense.amount}>Restar y Guardar</Button></DialogFooter></DialogContent>
-            </Dialog>
-
-            <Dialog open={openRegister} onOpenChange={setOpenRegister}>
-                <DialogContent><DialogHeader><DialogTitle>Apertura de Caja (Día)</DialogTitle></DialogHeader>
-                    <div className="grid gap-4 py-4">
-                        <div><Label>Dinero en Efectivo (Base Física)</Label><Input type="number" value={formBase} onChange={e=>setFormBase(Number(e.target.value))} /></div>
-                    </div>
-                <DialogFooter><Button className="bg-green-600 outline-none hover:bg-green-700 text-white" onClick={handleOpenReg}>Iniciar Reto Diario</Button></DialogFooter></DialogContent>
+                <DialogFooter><Button variant="destructive" className="w-full" onClick={handleExpense} disabled={!formExpense.category || !formExpense.account_id || !formExpense.amount}>Restar de Caja</Button></DialogFooter></DialogContent>
             </Dialog>
 
             <Dialog open={openCloseReg} onOpenChange={setOpenCloseReg}>
-                <DialogContent><DialogHeader><DialogTitle className="text-red-500">Arqueo Final de Caja</DialogTitle></DialogHeader>
+                <DialogContent><DialogHeader><DialogTitle className="text-red-500">Arqueo Final & Cierre de Caja</DialogTitle></DialogHeader>
                     <div className="grid gap-4 py-4">
-                        <div className="bg-red-500/10 border border-red-500/30 p-3 rounded-md text-xs text-red-500 mb-2">
-                            Al cerrar la caja, todos los movimientos de hoy quedarán bloqueados por seguridad RLS.
-                        </div>
-                        <div><Label>Conteo Final Real Física (Efectivo General)</Label><Input type="number" value={formClose.amount} onChange={e=>setFormClose(f=>({...f,amount:Number(e.target.value)}))} /></div>
-                        <div><Label>Notas de Cuadre</Label><Input value={formClose.notes} onChange={e=>setFormClose(f=>({...f,notes:e.target.value}))} /></div>
+                        <div className="bg-red-500/10 border border-red-500/30 p-3 rounded-md text-xs text-red-500">Al cerrar la caja, todos los movimientos quedarán bloqueados por seguridad RLS.</div>
+                        <div><Label>Conteo Efectivo Real</Label><Input type="number" value={formClose.amount} onChange={e=>setFormClose(f=>({...f,amount:Number(e.target.value)}))} /></div>
+                        <div><Label>Notas</Label><Input value={formClose.notes} onChange={e=>setFormClose(f=>({...f,notes:e.target.value}))} /></div>
                     </div>
-                <DialogFooter><Button variant="destructive" onClick={handleCloseReg}>Sellar Caja Permanentemente</Button></DialogFooter></DialogContent>
+                <DialogFooter><Button variant="destructive" className="w-full" onClick={handleCloseReg}>Sellar Operación Hoy</Button></DialogFooter></DialogContent>
             </Dialog>
 
             <Dialog open={openPayout} onOpenChange={setOpenPayout}>
-                <DialogContent><DialogHeader><DialogTitle>Liquidación a Demanda (Payout)</DialogTitle></DialogHeader>
+                <DialogContent><DialogHeader><DialogTitle>Liquidación Profesional</DialogTitle></DialogHeader>
                     <div className="grid gap-4 py-4">
-                        <div><Label>Profesional</Label><Select value={formPayout.prof_id} onValueChange={(v: string | null)=>setFormPayout(f=>({...f,prof_id:v || ''}))}><SelectTrigger><SelectValue placeholder="Elegir profesional" /></SelectTrigger><SelectContent>{professionals.map(p=><SelectItem key={p.professional_id} value={p.professional_id}>{p.profile?.first_name} {p.profile?.last_name} ({format_currency((p.net_earnings || 0))})</SelectItem>)}</SelectContent></Select></div>
-                        <div><Label>Descontar de la cuenta:</Label><Select value={formPayout.account_id} onValueChange={(v: string | null)=>setFormPayout(f=>({...f,account_id:v || ''}))}><SelectTrigger><SelectValue placeholder="Cuenta de donde sale el dinero" /></SelectTrigger><SelectContent>{accounts.map(a=><SelectItem key={a.id} value={a.id}>{a.name} ({format_currency(a.balance)})</SelectItem>)}</SelectContent></Select></div>
-                        <div><Label>Monto a Liquidar</Label><Input type="number" value={formPayout.amount} onChange={e=>setFormPayout(f=>({...f,amount:Number(e.target.value)}))} /></div>
+                        <div><Label>Profesional</Label><Select value={formPayout.prof_id} onValueChange={(v:string|null)=>setFormPayout(f=>({...f,prof_id:v||''}))}><SelectTrigger><SelectValue placeholder="Elegir profesional" /></SelectTrigger><SelectContent>{professionals.map(p=><SelectItem key={p.professional_id} value={p.professional_id}>{p.profile?.first_name} {p.profile?.last_name} ({format_currency(p.net_earnings)})</SelectItem>)}</SelectContent></Select></div>
+                        <div><Label>Cuenta</Label><Select value={formPayout.account_id} onValueChange={(v:string|null)=>setFormPayout(f=>({...f,account_id:v||''}))}><SelectTrigger><SelectValue placeholder="Cuenta de pago" /></SelectTrigger><SelectContent>{accounts.map(a=><SelectItem key={a.id} value={a.id}>{a.name} ({format_currency(a.balance)})</SelectItem>)}</SelectContent></Select></div>
+                        <div><Label>Monto</Label><Input type="number" value={formPayout.amount} onChange={e=>setFormPayout(f=>({...f,amount:Number(e.target.value)}))} /></div>
                     </div>
-                <DialogFooter><Button onClick={handlePayout} disabled={!formPayout.prof_id || !formPayout.account_id || !formPayout.amount}>Procesar Salida y Generar Tirilla</Button></DialogFooter></DialogContent>
+                <DialogFooter><Button className="w-full gradient-brand text-white" onClick={handlePayout} disabled={!formPayout.prof_id || !formPayout.account_id || !formPayout.amount}>Procesar Payout & Imprimir</Button></DialogFooter></DialogContent>
             </Dialog>
 
-            {/* Global style for printing thermal receipts */}
             <style dangerouslySetInnerHTML={{ __html: `
                 @media print {
                     .hide-on-print { display: none !important; }

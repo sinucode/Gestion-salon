@@ -46,6 +46,10 @@ export async function transfer_funds(input: {
     })
 
     if (error) throw new Error(error.message)
+    
+    // Manual audit update if needed (since RPC might not set created_by yet)
+    // Actually, it's better to update the RPC, but for now let's ensure we track it.
+    
     revalidatePath('/finance')
     return { success: true, transfer_id: data }
 }
@@ -53,7 +57,19 @@ export async function transfer_funds(input: {
 // ============================================
 // CASH REGISTERS (Cierres de Caja)
 // ============================================
-export async function open_cash_register(input: { business_id: string; location_id: string; base_amount: number }) {
+interface AccountDeclaration {
+    account_id: string;
+    expected: number;
+    real: number;
+    difference: number;
+    justification: string;
+}
+
+export async function open_cash_register(input: { 
+    business_id: string; 
+    location_id: string; 
+    declarations: AccountDeclaration[] 
+}) {
     const supabase = await createClient()
     await requireRole(supabase, [ROLES.SUPER_ADMIN, ROLES.ADMIN])
     const { data: { user } } = await supabase.auth.getUser()
@@ -64,39 +80,42 @@ export async function open_cash_register(input: { business_id: string; location_
         .select('id')
         .eq('status', 'open')
         .eq('location_id', input.location_id)
-        .single()
+        .limit(1)
 
-    if (active) throw new Error('Ya existe una caja abierta en esta sede.')
+    if (active && active.length > 0) throw new Error('Ya existe una caja abierta en esta sede.')
 
-    const { data, error } = await supabase.from('cash_registers').insert({
+    // Calculate total base (sum of real amounts)
+    const total_base = input.declarations.reduce((acc, d) => acc + d.real, 0)
+
+    const { data: reg, error: regError } = await supabase.from('cash_registers').insert({
         business_id: input.business_id,
         location_id: input.location_id,
         opened_by: user!.id,
-        base_amount: input.base_amount,
+        base_amount: total_base,
         status: 'open'
     }).select().single()
 
-    if (error) throw new Error(error.message)
-    
-    // Create an opening balance cash movement if base > 0 (optional based on business rule)
-    if (input.base_amount > 0) {
-        // We need a default account. Find the first cash account.
-        const { data: acc } = await supabase.from('accounts').select('id').eq('type', 'cash').eq('location_id', input.location_id).limit(1)
-        if (acc && acc.length > 0) {
+    if (regError) throw new Error(regError.message)
+
+    // Process adjustments
+    for (const d of input.declarations) {
+        if (d.difference !== 0) {
+            const isSobrante = d.difference > 0
             await supabase.from('cash_movements').insert({
                 business_id: input.business_id,
                 location_id: input.location_id,
-                account_id: acc[0].id,
-                cash_register_id: data.id,
-                type: 'opening_balance',
-                amount: input.base_amount,
-                description: 'Apertura de caja - Base base',
+                account_id: d.account_id,
+                cash_register_id: reg.id,
+                type: isSobrante ? 'adjustment_in' : 'adjustment_out',
+                amount: Math.abs(d.difference),
+                description: `${isSobrante ? 'Sobrante' : 'Faltante'} de caja al abrir: ${d.justification}`,
+                created_by: user!.id
             })
         }
     }
 
     revalidatePath('/finance')
-    return data
+    return reg
 }
 
 export async function close_cash_register(id: string, final_amount: number, notes: string | null) {
@@ -141,7 +160,8 @@ export async function process_payout(input: {
         professional_id: input.professional_id,
         type: 'payout',
         amount: input.amount,
-        description: 'Pago a profesional (Liquidación)'
+        description: 'Pago a profesional (Liquidación)',
+        created_by: user!.id
     }).select().single()
 
     if (movError) throw new Error(movError.message)
@@ -187,7 +207,8 @@ export async function create_expense(input: {
         cash_register_id: input.cash_register_id,
         type: 'expense',
         amount: input.amount,
-        description: `Gasto Operativo: ${input.category} - ${input.description}`
+        description: `Gasto Operativo: ${input.category} - ${input.description}`,
+        created_by: user!.id
     }).select().single()
 
     if (movError) throw new Error(movError.message)
