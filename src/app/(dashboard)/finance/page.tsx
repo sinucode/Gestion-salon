@@ -45,6 +45,7 @@ export default function FinanceERPPage() {
     const [formPayout, setFormPayout] = useState({ prof_id: '', account_id: '', amount: 0 })
 
     const [activeRegId, setActiveRegId] = useState<string | null>(null)
+    const [activeLocId, setActiveLocId] = useState<string | null>(null)
 
     const fetchData = async () => {
         if (!filterBusinessId) { setLoading(false); return }
@@ -58,6 +59,7 @@ export default function FinanceERPPage() {
         }
 
         if (!locFilter) { setLoading(false); return }
+        setActiveLocId(locFilter)
 
         const [
             { data: resPnl },
@@ -89,10 +91,10 @@ export default function FinanceERPPage() {
     useEffect(() => { setLoading(true); fetchData() }, [filterBusinessId])
 
     const handleTransfer = async () => {
-        if (!activeRegId) return toast.error('Debes abrir caja para transferir.')
+        if (!activeRegId || !activeLocId) return toast.error('Debes abrir caja para transferir.')
         try {
             await transfer_funds({
-                business_id: filterBusinessId!, location_id: filterLocationId || '',
+                business_id: filterBusinessId!, location_id: activeLocId,
                 cash_register_id: activeRegId,
                 from_account_id: formTransfer.from, to_account_id: formTransfer.to,
                 amount: formTransfer.amount, description: formTransfer.desc
@@ -104,8 +106,9 @@ export default function FinanceERPPage() {
     }
 
     const handleOpenReg = async () => {
+        if (!activeLocId) return toast.error('No hay sede seleccionada.')
         try {
-            await open_cash_register({ business_id: filterBusinessId!, location_id: filterLocationId || '', base_amount: formBase })
+            await open_cash_register({ business_id: filterBusinessId!, location_id: activeLocId, base_amount: formBase })
             toast.success('Caja Abierta')
             setOpenRegister(false)
             fetchData()
@@ -122,10 +125,10 @@ export default function FinanceERPPage() {
     }
 
     const handlePayout = async () => {
-        if (!activeRegId) return toast.error('Caja cerrada.')
+        if (!activeRegId || !activeLocId) return toast.error('Caja cerrada.')
         try {
             await process_payout({
-                business_id: filterBusinessId!, location_id: filterLocationId || '',
+                business_id: filterBusinessId!, location_id: activeLocId,
                 cash_register_id: activeRegId,
                 professional_id: formPayout.prof_id,
                 account_id: formPayout.account_id,

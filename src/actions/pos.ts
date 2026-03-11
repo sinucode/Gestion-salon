@@ -71,6 +71,8 @@ export async function process_direct_sale(input: {
 export async function create_express_appointment(input: {
     business_id: string;
     location_id: string;
+    cash_register_id: string;
+    account_id: string;
     professional_id: string;
     client_name: string;
     service_ids: string[];
@@ -109,6 +111,19 @@ export async function create_express_appointment(input: {
     }))
 
     await supabase.from('appointment_services').insert(appt_services)
+
+    // Create cash movement for the service payment
+    const { error: errMov } = await supabase.from('cash_movements').insert({
+        business_id: input.business_id,
+        location_id: input.location_id,
+        cash_register_id: input.cash_register_id,
+        account_id: input.account_id,
+        professional_id: input.professional_id,
+        type: 'direct_sale',
+        amount: input.total,
+        description: `Servicio(s) Cita Express: ${input.client_name}`
+    })
+    if (errMov) throw new Error(errMov.message)
 
     revalidatePath('/appointments')
     revalidatePath('/pos')

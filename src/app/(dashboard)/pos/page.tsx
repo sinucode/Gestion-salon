@@ -28,6 +28,7 @@ export default function POSPage() {
     const [professionals, setProfessionals] = useState<{ id: string; name: string }[]>([])
     const [accounts, setAccounts] = useState<{ id: string; name: string }[]>([])
     const [activeRegister, setActiveRegister] = useState<string | null>(null)
+    const [activeLocId, setActiveLocId] = useState<string | null>(null)
     const [loading, setLoading] = useState(true)
 
     // Form states
@@ -52,7 +53,7 @@ export default function POSPage() {
             supabase.from('services').select('id, name, price').eq('business_id', filterBusinessId).eq('is_active', true),
             supabase.from('profiles').select('id, first_name, last_name').eq('business_id', filterBusinessId).eq('role', 'professional').eq('is_active', true),
             supabase.from('accounts').select('id, name').eq('business_id', filterBusinessId).eq('is_active', true),
-            supabase.from('cash_registers').select('id').eq('business_id', filterBusinessId).eq('status', 'open').order('created_at', { ascending: false }).limit(1)
+            supabase.from('cash_registers').select('id, location_id').eq('business_id', filterBusinessId).eq('status', 'open').order('created_at', { ascending: false }).limit(1)
         ])
 
         if (prods) setProducts(prods.map(p => ({ ...p, type: 'product' })))
@@ -62,7 +63,10 @@ export default function POSPage() {
             setAccounts(accs)
             if (accs.length > 0) setSelectedAccount(accs[0].id)
         }
-        if (reg && reg.length > 0) setActiveRegister(reg[0].id)
+        if (reg && reg.length > 0) {
+            setActiveRegister(reg[0].id)
+            setActiveLocId(reg[0].location_id)
+        }
 
         setLoading(false)
     }
@@ -96,8 +100,8 @@ export default function POSPage() {
 
     const processSale = async () => {
         if (cart.length === 0) return
-        if (hasProducts && !activeRegister) return toast.error('Debes abrir caja para facturar productos.')
-        if (hasProducts && !selectedAccount) return toast.error('Selecciona una cuenta de recaudo.')
+        if (!activeRegister) return toast.error('Debes tener tu caja abierta para facturar.')
+        if (!selectedAccount) return toast.error('Selecciona una cuenta de recaudo financiera.')
         if (hasServices && !selectedProf) return toast.error('Selecciona un profesional para el servicio.')
         if (hasServices && !clientName) return toast.error('Escribe el nombre del cliente.')
 
@@ -105,9 +109,12 @@ export default function POSPage() {
         try {
             // 1. Process services if any (Express Appointment)
             if (hasServices) {
+                if (!activeLocId) throw new Error('Caja no encontrada para procesar cita express.')
                 await create_express_appointment({
                     business_id: filterBusinessId!,
-                    location_id: user!.location_id!,
+                    location_id: activeLocId,
+                    cash_register_id: activeRegister!,
+                    account_id: selectedAccount,
                     professional_id: selectedProf,
                     client_name: clientName,
                     service_ids: cart.filter(i => i.type === 'service').map(i => i.id),
@@ -117,9 +124,10 @@ export default function POSPage() {
 
             // 2. Process products if any (Direct Sale)
             if (hasProducts) {
+                if (!activeLocId) throw new Error('Caja no encontrada para procesar la venta.')
                 await process_direct_sale({
                     business_id: filterBusinessId!,
-                    location_id: user!.location_id!,
+                    location_id: activeLocId,
                     cash_register_id: activeRegister!,
                     account_id: selectedAccount,
                     items: cart.filter(i => i.type === 'product').map(i => ({ product_id: i.id, qty: i.qty, price: i.price })),
@@ -267,7 +275,7 @@ export default function POSPage() {
                                 </div>
                             )}
 
-                            {hasProducts && (
+                            {(hasProducts || hasServices) && (
                                 <div className="space-y-2 pt-2 border-t border-border/50">
                                     <Select value={selectedAccount} onValueChange={(v: string | null) => setSelectedAccount(v || '')}>
                                         <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Cuenta de pago..." /></SelectTrigger>
@@ -280,7 +288,7 @@ export default function POSPage() {
                         </div>
 
                         <div className="pt-2 grid gap-2">
-                            <Button className="w-full gradient-brand text-white shadow-md hover:shadow-lg transition-all" size="lg" disabled={cart.length === 0 || processing || (hasProducts && !activeRegister)} onClick={processSale}>
+                            <Button className="w-full gradient-brand text-white shadow-md hover:shadow-lg transition-all" size="lg" disabled={cart.length === 0 || processing || !activeRegister} onClick={processSale}>
                                 {processing ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Procesando...</> : <><CheckCircle2 className="w-4 h-4 mr-2" /> Cobrar {format_currency(cartTotal)}</>}
                             </Button>
 
