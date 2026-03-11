@@ -20,6 +20,7 @@ import { es } from 'date-fns/locale'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
     Loader2,
     User,
@@ -31,11 +32,13 @@ import {
     X,
     ExternalLink,
     Sparkles,
+    DollarSign,
+    Scissors,
+    FileText,
 } from 'lucide-react'
 import { getColombianHolidays, isHoliday, type Holiday } from '@/lib/utils/holidays'
 import { createClient } from '@/lib/supabase/client'
 import { formatCOP } from '@/lib/utils/currency'
-import { useRouter } from 'next/navigation'
 import type { Business } from '@/types'
 
 interface CalendarViewProps {
@@ -53,6 +56,11 @@ interface Appointment {
     professional: { first_name: string; last_name: string } | null
     client: { first_name: string; last_name: string } | null
     location: { name: string } | null
+}
+
+interface DetailAppointment extends Appointment {
+    notes: string | null
+    services: { name: string; price: number; duration_min: number }[]
 }
 
 interface DayAppointmentCount {
@@ -80,7 +88,6 @@ const STATUS_CONFIG: Record<string, { bg: string; border: string; text: string; 
 const WEEKDAY_LABELS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
 
 export function CalendarView({ businessId }: CalendarViewProps) {
-    const router = useRouter()
     const [currentMonth, setCurrentMonth] = useState(new Date())
     const [selectedDate, setSelectedDate] = useState<Date | null>(new Date())
     const [holidays, setHolidays] = useState<Holiday[]>([])
@@ -89,6 +96,8 @@ export function CalendarView({ businessId }: CalendarViewProps) {
     const [businessData, setBusinessData] = useState<Business | null>(null)
     const [loadingDay, setLoadingDay] = useState(false)
     const [loadingMonth, setLoadingMonth] = useState(false)
+    const [selectedAppt, setSelectedAppt] = useState<DetailAppointment | null>(null)
+    const [loadingDetail, setLoadingDetail] = useState(false)
 
     // Fetch business branding
     useEffect(() => {
@@ -354,7 +363,22 @@ export function CalendarView({ businessId }: CalendarViewProps) {
                                     return (
                                         <div
                                             key={appt.id}
-                                            onClick={() => router.push(`/appointments?id=${appt.id}`)}
+                                            onClick={async () => {
+                                                setLoadingDetail(true)
+                                                const supabase = createClient()
+                                                const { data } = await supabase.from('appointments')
+                                                    .select(`
+                                                        id, status, total_price, starts_at, ends_at, professional_id, location_id, notes,
+                                                        professional:profiles!appointments_professional_id_fkey(first_name, last_name),
+                                                        client:profiles!appointments_client_id_fkey(first_name, last_name),
+                                                        location:locations!appointments_location_id_fkey(name),
+                                                        services:appointment_services(name:services(name), price:services(price), duration_min:services(duration_min))
+                                                    `)
+                                                    .eq('id', appt.id)
+                                                    .single()
+                                                setSelectedAppt(data as unknown as DetailAppointment)
+                                                setLoadingDetail(false)
+                                            }}
                                             className={`
                                                 group flex items-stretch gap-0 rounded-xl border overflow-hidden
                                                 cursor-pointer transition-all duration-200 hover:shadow-md hover:scale-[1.005]
@@ -425,6 +449,116 @@ export function CalendarView({ businessId }: CalendarViewProps) {
                     </CardContent>
                 </Card>
             )}
+
+            {/* Appointment Detail Dialog */}
+            <Dialog open={!!selectedAppt} onOpenChange={(open) => { if (!open) setSelectedAppt(null) }}>
+                <DialogContent className="sm:max-w-lg">
+                    {selectedAppt && (
+                        <>
+                            <DialogHeader>
+                                <DialogTitle className="flex items-center gap-3">
+                                    <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `${primaryColor}15` }}>
+                                        <CalendarIcon className="w-4 h-4" style={{ color: primaryColor }} />
+                                    </div>
+                                    Detalle de Cita
+                                </DialogTitle>
+                            </DialogHeader>
+
+                            <div className="space-y-5 py-2">
+                                {/* Date & Time */}
+                                <div className="flex items-center gap-4 p-4 rounded-xl bg-muted/30 border border-border/30">
+                                    <div className="text-center">
+                                        <p className="text-2xl font-black leading-none" style={{ color: primaryColor }}>
+                                            {format(new Date(selectedAppt.starts_at), 'HH:mm')}
+                                        </p>
+                                        <p className="text-xs text-muted-foreground mt-0.5">
+                                            a {format(new Date(selectedAppt.ends_at), 'HH:mm')}
+                                        </p>
+                                    </div>
+                                    <div className="h-10 w-px bg-border/50" />
+                                    <div>
+                                        <p className="text-sm font-semibold capitalize">
+                                            {format(new Date(selectedAppt.starts_at), "EEEE, d 'de' MMMM", { locale: es })}
+                                        </p>
+                                        <div className="flex items-center gap-2 mt-1">
+                                            <div className={`w-2 h-2 rounded-full ${(STATUS_CONFIG[selectedAppt.status] || STATUS_CONFIG.scheduled).dot}`} />
+                                            <span className={`text-xs font-semibold ${(STATUS_CONFIG[selectedAppt.status] || STATUS_CONFIG.scheduled).text}`}>
+                                                {STATUS_LABELS[selectedAppt.status]}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Client & Professional */}
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="p-3 rounded-xl bg-muted/20 border border-border/20 space-y-1">
+                                        <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">Cliente</p>
+                                        <p className="text-sm font-bold">
+                                            {selectedAppt.client ? `${selectedAppt.client.first_name} ${selectedAppt.client.last_name}` : 'Sin registrar'}
+                                        </p>
+                                    </div>
+                                    <div className="p-3 rounded-xl bg-muted/20 border border-border/20 space-y-1">
+                                        <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">Profesional</p>
+                                        <p className="text-sm font-bold flex items-center gap-1">
+                                            <User className="w-3.5 h-3.5" style={{ color: primaryColor }} />
+                                            {selectedAppt.professional ? `${selectedAppt.professional.first_name} ${selectedAppt.professional.last_name}` : '—'}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {/* Location */}
+                                {selectedAppt.location && (
+                                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                        <MapPin className="w-4 h-4" style={{ color: primaryColor }} />
+                                        <span className="font-medium">{selectedAppt.location.name}</span>
+                                    </div>
+                                )}
+
+                                {/* Services */}
+                                {selectedAppt.services && selectedAppt.services.length > 0 && (
+                                    <div className="space-y-2">
+                                        <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold flex items-center gap-1">
+                                            <Scissors className="w-3 h-3" /> Servicios
+                                        </p>
+                                        <div className="space-y-1.5">
+                                            {selectedAppt.services.map((s: any, i: number) => (
+                                                <div key={i} className="flex items-center justify-between p-2 rounded-lg bg-muted/20 border border-border/10 text-sm">
+                                                    <span className="font-medium">{s.name?.name || s.name}</span>
+                                                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                                                        <span>{s.duration_min?.duration_min || s.duration_min} min</span>
+                                                        <span className="font-semibold" style={{ color: primaryColor }}>{formatCOP(s.price?.price || s.price)}</span>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Notes */}
+                                {selectedAppt.notes && (
+                                    <div className="space-y-1">
+                                        <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold flex items-center gap-1">
+                                            <FileText className="w-3 h-3" /> Notas
+                                        </p>
+                                        <p className="text-sm text-muted-foreground bg-muted/20 rounded-lg p-3 border border-border/10">{selectedAppt.notes}</p>
+                                    </div>
+                                )}
+
+                                {/* Total */}
+                                <div className="flex items-center justify-between p-4 rounded-xl border border-border/30" style={{ background: `${primaryColor}08` }}>
+                                    <span className="text-sm font-semibold flex items-center gap-2">
+                                        <DollarSign className="w-4 h-4" style={{ color: primaryColor }} />
+                                        Total
+                                    </span>
+                                    <span className="text-xl font-black" style={{ color: primaryColor }}>
+                                        {formatCOP(selectedAppt.total_price)}
+                                    </span>
+                                </div>
+                            </div>
+                        </>
+                    )}
+                </DialogContent>
+            </Dialog>
         </div>
     )
 }
