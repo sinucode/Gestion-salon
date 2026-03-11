@@ -509,6 +509,14 @@ export default function FinanceERPPage() {
                                         )
                                     })}
                                 </tbody>
+                                <tfoot className="bg-muted/30 font-bold border-t border-border/50">
+                                    <tr>
+                                        <td colSpan={5} className="py-3 px-4 text-right uppercase text-xs text-muted-foreground">Flujo Neto Total:</td>
+                                        <td className={`py-3 px-4 text-right ${movements.reduce((sum,m)=>sum+(['income', 'direct_sale', 'transfer_in', 'opening_balance', 'adjustment_in'].includes(m.type)?m.amount:-m.amount),0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                            {format_currency(movements.reduce((sum,m)=>sum+(['income', 'direct_sale', 'transfer_in', 'opening_balance', 'adjustment_in'].includes(m.type)?m.amount:-m.amount),0))}
+                                        </td>
+                                    </tr>
+                                </tfoot>
                             </table>
                         </div>
                     </CardContent></Card>
@@ -522,9 +530,15 @@ export default function FinanceERPPage() {
                             <p className="text-sm text-yellow-600 dark:text-yellow-400"><strong>Modo de solo lectura.</strong> Selecciona una sede física específica en el filtro superior para habilitar las operaciones de caja y movimientos financieros.</p>
                         </div>
                     )}
-                    <div className="flex justify-between items-center">
+                    <div className="flex justify-between items-center pb-2">
                         <h3 className="font-semibold text-lg flex items-center gap-2"><Wallet className="w-5 h-5" /> Cuentas & Saldos</h3>
-                        <Button className="gradient-brand text-white" disabled={isGlobalView || !activeRegId} onClick={() => setOpenTransfer(true)}><ArrowRightLeft className="w-4 h-4 mr-2" /> Cuadre Suma Cero</Button>
+                        <div className="flex items-center gap-4">
+                            <div className="bg-muted/50 px-3 py-1.5 rounded-lg border border-border/50 flex items-center gap-2">
+                                <span className="text-xs text-muted-foreground uppercase font-semibold tracking-wider">Capital Total Consolidado:</span>
+                                <span className="font-bold font-mono text-sm">{format_currency(accounts.reduce((sum, a) => sum + (a.balance||0), 0))}</span>
+                            </div>
+                            <Button className="gradient-brand text-white" disabled={isGlobalView || !activeRegId} onClick={() => setOpenTransfer(true)}><ArrowRightLeft className="w-4 h-4 mr-2" /> Cuadre Suma Cero</Button>
+                        </div>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                         {accounts.map(acc => (
@@ -568,6 +582,12 @@ export default function FinanceERPPage() {
                                     </tr>
                                 ))}
                             </tbody>
+                                <tfoot className="bg-muted/30 font-bold border-t border-border/50">
+                                    <tr>
+                                        <td colSpan={5} className="py-3 px-4 text-right uppercase text-xs text-muted-foreground">Total Egresos Operativos:</td>
+                                        <td className="py-3 px-4 text-right text-red-500">{format_currency(expenses.reduce((sum, e) => sum + (e.amount||0), 0))}</td>
+                                    </tr>
+                                </tfoot>
                         </table>
                     </CardContent></Card>
                 </TabsContent>
@@ -600,6 +620,14 @@ export default function FinanceERPPage() {
                                     </tr>
                                 ))}
                             </tbody>
+                                <tfoot className="bg-muted/30 font-bold border-t border-border/50">
+                                    <tr>
+                                        <td colSpan={2} className="py-3 px-4 text-right uppercase text-xs text-muted-foreground">Totales de Nómina / Liquidación:</td>
+                                        <td className="py-3 px-4 text-right">{format_currency(professionals.reduce((sum, p) => sum + (p.gross_income||0), 0))}</td>
+                                        <td className="py-3 px-4 text-right text-brand">{format_currency(professionals.reduce((sum, p) => sum + (p.commission_earned||0), 0))}</td>
+                                        <td className="py-3 px-4 text-right text-red-400">{format_currency(professionals.reduce((sum, p) => sum + (p.damage_deducted||0), 0))}</td>
+                                    </tr>
+                                </tfoot>
                         </table>
                     </CardContent></Card>
                 </TabsContent>
@@ -662,6 +690,15 @@ export default function FinanceERPPage() {
                                     </tr>
                                 ))}
                             </tbody>
+                                <tfoot className="bg-muted/30 font-bold border-t border-border/50">
+                                    <tr>
+                                        <td colSpan={4} className="py-3 px-4 text-right uppercase text-xs text-muted-foreground">Total Flujos de Operación:</td>
+                                        <td className="py-3 px-4 text-right text-green-500">+{format_currency(registers.reduce((sum, r) => sum + (r.total_incomes||0), 0))}</td>
+                                        <td className="py-3 px-4 text-right text-red-500">-{format_currency(registers.reduce((sum, r) => sum + (r.total_outcomes||0), 0))}</td>
+                                        <td className="py-3 px-4 text-right">{format_currency(registers.reduce((sum, r) => sum + (r.net_cash || r.final_amount || 0), 0))}</td>
+                                        <td className="py-3 px-4 text-center"></td>
+                                    </tr>
+                                </tfoot>
                         </table>
                     </CardContent></Card>
                 </TabsContent>
