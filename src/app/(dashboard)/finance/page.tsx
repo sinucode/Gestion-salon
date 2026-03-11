@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/stores'
-import { formatCOP } from '@/lib/utils/currency'
+import { format_currency } from '@/lib/utils/currency'
 import { toast } from 'sonner'
 import { open_cash_register, close_cash_register, transfer_funds, process_payout } from '@/actions/finance'
 
@@ -167,15 +167,15 @@ export default function FinanceERPPage() {
                     <div className="grid grid-cols-3 gap-4">
                         <Card className="border-border/50 bg-card/80 backdrop-blur-sm">
                             <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Ingresos (Ventas/Citas)</CardTitle></CardHeader>
-                            <CardContent><div className="text-2xl font-bold text-green-500 flex items-center gap-2"><TrendingUp className="w-5 h-5" />{formatCOP(pnl.reduce((a,c)=>a+c.gross_income,0))}</div></CardContent>
+                            <CardContent><div className="text-2xl font-bold text-green-500 flex items-center gap-2"><TrendingUp className="w-5 h-5" />{format_currency(pnl.reduce((a,c)=>a+c.gross_income,0))}</div></CardContent>
                         </Card>
                         <Card className="border-border/50 bg-card/80 backdrop-blur-sm">
                             <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Costos (Inv + Comisiones)</CardTitle></CardHeader>
-                            <CardContent><div className="text-2xl font-bold text-red-500 flex items-center gap-2"><TrendingDown className="w-5 h-5" />{formatCOP(pnl.reduce((a,c)=>a+c.inventory_cost+c.commissions,0))}</div></CardContent>
+                            <CardContent><div className="text-2xl font-bold text-red-500 flex items-center gap-2"><TrendingDown className="w-5 h-5" />{format_currency(pnl.reduce((a,c)=>a+c.inventory_cost+c.commissions,0))}</div></CardContent>
                         </Card>
                         <Card className="border-border/50 bg-card/80 backdrop-blur-sm">
                             <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Utilidad Bruta (Net Profit)</CardTitle></CardHeader>
-                            <CardContent><div className="text-2xl font-bold text-brand">{formatCOP(pnl.reduce((a,c)=>a+c.net_profit,0))}</div></CardContent>
+                            <CardContent><div className="text-2xl font-bold text-brand">{format_currency(pnl.reduce((a,c)=>a+c.net_profit,0))}</div></CardContent>
                         </Card>
                     </div>
                 </TabsContent>
@@ -191,7 +191,7 @@ export default function FinanceERPPage() {
                             <Card key={acc.id} className="border-border/50 bg-card/80 relative overflow-hidden">
                                 <div className={`absolute top-0 left-0 w-1 h-full ${acc.type === 'cash' ? 'bg-green-500' : 'bg-blue-500'}`} />
                                 <CardHeader className="pb-2 pl-6"><CardTitle className="text-md">{acc.name}</CardTitle></CardHeader>
-                                <CardContent className="pl-6"><div className="text-2xl font-mono font-bold">{formatCOP(acc.balance)}</div></CardContent>
+                                <CardContent className="pl-6"><div className="text-2xl font-mono font-bold">{format_currency(acc.balance)}</div></CardContent>
                             </Card>
                         ))}
                     </div>
@@ -212,9 +212,9 @@ export default function FinanceERPPage() {
                                 {professionals.map((p, i) => (
                                     <tr key={i} className="border-b border-border/20">
                                         <td className="py-3 px-4">{p.profile?.first_name} {p.profile?.last_name}</td>
-                                        <td className="py-3 px-4 text-right">{formatCOP(p.gross_income)}</td>
-                                        <td className="py-3 px-4 text-right text-brand font-bold">{formatCOP(p.commission_earned)}</td>
-                                        <td className="py-3 px-4 text-right text-red-500">{formatCOP(p.damage_deducted)}</td>
+                                        <td className="py-3 px-4 text-right">{format_currency(p.gross_income)}</td>
+                                        <td className="py-3 px-4 text-right text-brand font-bold">{format_currency(p.commission_earned)}</td>
+                                        <td className="py-3 px-4 text-right text-red-500">{format_currency(p.damage_deducted)}</td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -242,8 +242,8 @@ export default function FinanceERPPage() {
                                     <tr key={r.id} className="border-b border-border/20 hover:bg-muted/10">
                                         <td className="py-3 px-4">{new Date(r.opened_at).toLocaleDateString('es-CO')}</td>
                                         <td className="py-3 px-4"><Badge variant="outline" className={r.status==='open'?'text-green-500':'text-gray-500'}>{r.status}</Badge></td>
-                                        <td className="py-3 px-4 text-right">{formatCOP(r.base_amount)}</td>
-                                        <td className="py-3 px-4 text-right font-medium">{r.final_amount !== null ? formatCOP(r.final_amount) : '—'}</td>
+                                        <td className="py-3 px-4 text-right">{format_currency(r.base_amount)}</td>
+                                        <td className="py-3 px-4 text-right font-medium">{r.final_amount !== null ? format_currency(r.final_amount) : '—'}</td>
                                         <td className="py-3 px-4 text-muted-foreground">{r.opener?.first_name}</td>
                                     </tr>
                                 ))}
@@ -256,7 +256,7 @@ export default function FinanceERPPage() {
             <Dialog open={openTransfer} onOpenChange={setOpenTransfer}>
                 <DialogContent><DialogHeader><DialogTitle>Transferencia Suma Cero</DialogTitle></DialogHeader>
                     <div className="grid gap-4 py-4">
-                        <div><Label>Origen (Resta)</Label><Select value={formTransfer.from} onValueChange={(v: string | null)=>setFormTransfer(f=>({...f,from:v || ''}))}><SelectTrigger><SelectValue placeholder="Cuenta origen" /></SelectTrigger><SelectContent>{accounts.map(a=><SelectItem key={a.id} value={a.id}>{a.name} ({formatCOP(a.balance)})</SelectItem>)}</SelectContent></Select></div>
+                        <div><Label>Origen (Resta)</Label><Select value={formTransfer.from} onValueChange={(v: string | null)=>setFormTransfer(f=>({...f,from:v || ''}))}><SelectTrigger><SelectValue placeholder="Cuenta origen" /></SelectTrigger><SelectContent>{accounts.map(a=><SelectItem key={a.id} value={a.id}>{a.name} ({format_currency(a.balance)})</SelectItem>)}</SelectContent></Select></div>
                         <div><Label>Destino (Suma)</Label><Select value={formTransfer.to} onValueChange={(v: string | null)=>setFormTransfer(f=>({...f,to:v || ''}))}><SelectTrigger><SelectValue placeholder="Cuenta destino" /></SelectTrigger><SelectContent>{accounts.map(a=><SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent></Select></div>
                         <div><Label>Monto EXACTO a mover</Label><Input type="number" value={formTransfer.amount} onChange={e=>setFormTransfer(f=>({...f,amount:Number(e.target.value)}))} /></div>
                         <div><Label>Descripción (Revisión Auditoría)</Label><Input value={formTransfer.desc} onChange={e=>setFormTransfer(f=>({...f,desc:e.target.value}))} /></div>
@@ -287,8 +287,8 @@ export default function FinanceERPPage() {
             <Dialog open={openPayout} onOpenChange={setOpenPayout}>
                 <DialogContent><DialogHeader><DialogTitle>Liquidación a Demanda (Payout)</DialogTitle></DialogHeader>
                     <div className="grid gap-4 py-4">
-                        <div><Label>Profesional</Label><Select value={formPayout.prof_id} onValueChange={(v: string | null)=>setFormPayout(f=>({...f,prof_id:v || ''}))}><SelectTrigger><SelectValue placeholder="Elegir profesional" /></SelectTrigger><SelectContent>{professionals.map(p=><SelectItem key={p.professional_id} value={p.professional_id}>{p.profile?.first_name} {p.profile?.last_name} ({formatCOP(p.commission_earned - p.damage_deducted)})</SelectItem>)}</SelectContent></Select></div>
-                        <div><Label>Descontar de la cuenta:</Label><Select value={formPayout.account_id} onValueChange={(v: string | null)=>setFormPayout(f=>({...f,account_id:v || ''}))}><SelectTrigger><SelectValue placeholder="Cuenta de donde sale el dinero" /></SelectTrigger><SelectContent>{accounts.map(a=><SelectItem key={a.id} value={a.id}>{a.name} ({formatCOP(a.balance)})</SelectItem>)}</SelectContent></Select></div>
+                        <div><Label>Profesional</Label><Select value={formPayout.prof_id} onValueChange={(v: string | null)=>setFormPayout(f=>({...f,prof_id:v || ''}))}><SelectTrigger><SelectValue placeholder="Elegir profesional" /></SelectTrigger><SelectContent>{professionals.map(p=><SelectItem key={p.professional_id} value={p.professional_id}>{p.profile?.first_name} {p.profile?.last_name} ({format_currency(p.commission_earned - p.damage_deducted)})</SelectItem>)}</SelectContent></Select></div>
+                        <div><Label>Descontar de la cuenta:</Label><Select value={formPayout.account_id} onValueChange={(v: string | null)=>setFormPayout(f=>({...f,account_id:v || ''}))}><SelectTrigger><SelectValue placeholder="Cuenta de donde sale el dinero" /></SelectTrigger><SelectContent>{accounts.map(a=><SelectItem key={a.id} value={a.id}>{a.name} ({format_currency(a.balance)})</SelectItem>)}</SelectContent></Select></div>
                         <div><Label>Monto a Liquidar</Label><Input type="number" value={formPayout.amount} onChange={e=>setFormPayout(f=>({...f,amount:Number(e.target.value)}))} /></div>
                     </div>
                 <DialogFooter><Button onClick={handlePayout} disabled={!formPayout.prof_id || !formPayout.account_id || !formPayout.amount}>Procesar Salida y Generar Tirilla</Button></DialogFooter></DialogContent>

@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/stores'
 import { toast } from 'sonner'
-import { formatCOP } from '@/lib/utils/currency'
+import { format_currency } from '@/lib/utils/currency'
 
 interface Appointment {
     id: string; status: string; total_price: number; starts_at: string; ends_at: string; notes: string | null
@@ -79,7 +79,7 @@ export default function AppointmentsPage() {
                                 <td className="py-3 px-4 text-xs whitespace-nowrap">{new Date(a.starts_at).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
                                 <td className="py-3 px-4">{a.professional?.first_name} {a.professional?.last_name}</td>
                                 <td className="py-3 px-4 text-muted-foreground">{a.client?.first_name} {a.client?.last_name}</td>
-                                <td className="py-3 px-4 text-right font-semibold">{formatCOP(a.total_price)}</td>
+                                <td className="py-3 px-4 text-right font-semibold">{format_currency(a.total_price)}</td>
                                 <td className="py-3 px-4 text-center"><Badge className={`text-xs ${STATUS_COLORS[a.status] || ''}`}>{STATUS_LABELS[a.status] || a.status}</Badge></td>
                                 <td className="py-3 px-4 text-center">
                                     <div className="flex gap-1 justify-center">

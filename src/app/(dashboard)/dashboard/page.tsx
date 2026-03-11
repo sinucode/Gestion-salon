@@ -17,7 +17,7 @@ import {
     Building2,
     Loader2,
 } from 'lucide-react'
-import { formatCOP } from '@/lib/utils/currency'
+import { format_currency } from '@/lib/utils/currency'
 import { CalendarView } from '@/components/dashboard/calendar-view'
 
 interface KPIs {
@@ -148,7 +148,7 @@ export default function DashboardPage() {
                         <div className="p-2 rounded-lg bg-green-500/10 group-hover:bg-green-500/20 transition-colors"><DollarSign className="h-4 w-4 text-green-500" /></div>
                     </CardHeader>
                     <CardContent>
-                        <div className="text-3xl font-bold">{formatCOP(kpis.grossIncomeToday)}</div>
+                        <div className="text-3xl font-bold">{format_currency(kpis.grossIncomeToday)}</div>
                         <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground"><TrendingUp className="w-3 h-3 text-green-500" />Ingresos brutos del día</div>
                     </CardContent>
                 </Card>
@@ -203,7 +203,7 @@ export default function DashboardPage() {
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-3">
-                                        <span className="text-sm font-semibold">{formatCOP(appt.total_price)}</span>
+                                        <span className="text-sm font-semibold">{format_currency(appt.total_price)}</span>
                                         <Badge className={`text-xs ${statusColor[appt.status] || ''}`}>{statusLabel[appt.status] || appt.status}</Badge>
                                     </div>
                                 </div>

@@ -38,7 +38,7 @@ import {
 } from 'lucide-react'
 import { getColombianHolidays, isHoliday, type Holiday } from '@/lib/utils/holidays'
 import { createClient } from '@/lib/supabase/client'
-import { formatCOP } from '@/lib/utils/currency'
+import { format_currency } from '@/lib/utils/currency'
 import type { Business } from '@/types'
 
 interface CalendarViewProps {
@@ -436,7 +436,7 @@ export function CalendarView({ businessId }: CalendarViewProps) {
                                                 {/* Price + action */}
                                                 <div className="flex items-center gap-3 shrink-0">
                                                     <p className="text-sm font-bold" style={{ color: primaryColor }}>
-                                                        {formatCOP(appt.total_price)}
+                                                        {format_currency(appt.total_price)}
                                                     </p>
                                                     <ExternalLink className="w-4 h-4 opacity-0 group-hover:opacity-40 transition-opacity" />
                                                 </div>
@@ -526,7 +526,7 @@ export function CalendarView({ businessId }: CalendarViewProps) {
                                                     <span className="font-medium">{s.name?.name || s.name}</span>
                                                     <div className="flex items-center gap-3 text-xs text-muted-foreground">
                                                         <span>{s.duration_min?.duration_min || s.duration_min} min</span>
-                                                        <span className="font-semibold" style={{ color: primaryColor }}>{formatCOP(s.price?.price || s.price)}</span>
+                                                        <span className="font-semibold" style={{ color: primaryColor }}>{format_currency(s.price?.price || s.price)}</span>
                                                     </div>
                                                 </div>
                                             ))}
@@ -551,7 +551,7 @@ export function CalendarView({ businessId }: CalendarViewProps) {
                                         Total
                                     </span>
                                     <span className="text-xl font-black" style={{ color: primaryColor }}>
-                                        {formatCOP(selectedAppt.total_price)}
+                                        {format_currency(selectedAppt.total_price)}
                                     </span>
                                 </div>
                             </div>

@@ -16,12 +16,12 @@ async function resetPass() {
     if (!adminUser) return console.log('Admin not found!');
     
     const { error: resetError } = await admin.auth.admin.updateUserById(adminUser.id, {
-        password: 'wilsonsinuco',
+        password: 'wilson',
         email_confirm: true
     });
     
     if (resetError) console.error('Error resetting password:', resetError);
-    else console.log('Password successfully reset to "wilsonsinuco" for admin@wsm.com');
+    else console.log('Password successfully reset to "wilson" for admin@wsm.com');
 }
 
 resetPass();

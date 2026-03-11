@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/stores'
 import { toast } from 'sonner'
-import { formatCOP } from '@/lib/utils/currency'
+import { format_currency } from '@/lib/utils/currency'
 
 interface DamageRow { id: string; reported_by: string; product_id: string | null; qty: number; estimated_cost: number; description: string; resolution_status: string; resolution_note: string | null; created_at: string; reporter?: { first_name: string; last_name: string }; product?: { name: string } }
 
@@ -101,7 +101,7 @@ export default function DamagesPage() {
                                 <td className="py-3 px-4">{d.reporter?.first_name} {d.reporter?.last_name}</td>
                                 <td className="py-3 px-4 text-muted-foreground">{d.product?.name || '—'}</td>
                                 <td className="py-3 px-4 text-center">{d.qty}</td>
-                                <td className="py-3 px-4 text-right">{formatCOP(d.estimated_cost)}</td>
+                                <td className="py-3 px-4 text-right">{format_currency(d.estimated_cost)}</td>
                                 <td className="py-3 px-4 text-muted-foreground max-w-[200px] truncate">{d.description}</td>
                                 <td className="py-3 px-4 text-center"><Badge className={`text-xs ${STATUS_COLORS[d.resolution_status] || ''}`}>{STATUS_LABELS[d.resolution_status] || d.resolution_status}</Badge></td>
                                 <td className="py-3 px-4 text-center">

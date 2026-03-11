@@ -15,7 +15,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/stores'
 import { toast } from 'sonner'
-import { formatCOP } from '@/lib/utils/currency'
+import { format_currency } from '@/lib/utils/currency'
 import { delete_category, restore_category, delete_service, restore_service } from '@/actions/catalog'
 
 interface CategoryRow { id: string; business_id: string; name: string; description: string | null; sort_order: number; is_active: boolean }
@@ -193,7 +193,7 @@ export default function CatalogPage() {
                                         <tr key={s.id} className={`border-b border-border/20 transition-colors ${s.is_active ? 'hover:bg-muted/30' : 'opacity-60 grayscale-[0.5]'}`}>
                                             <td className="py-3 px-4 font-medium">{s.name}</td>
                                             <td className="py-3 px-4 text-muted-foreground">{s.category?.name || '—'}</td>
-                                            <td className="py-3 px-4 text-right font-semibold">{formatCOP(s.price)}</td>
+                                            <td className="py-3 px-4 text-right font-semibold">{format_currency(s.price)}</td>
                                             <td className="py-3 px-4 text-center"><Badge variant="secondary" className="text-xs"><Clock className="w-3 h-3 mr-1" />{s.duration_min} min</Badge></td>
                                             <td className="py-3 px-4 text-center">{s.commission_pct}%</td>
                                             <td className="py-3 px-4 text-center">

@@ -13,7 +13,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/stores'
 import { toast } from 'sonner'
-import { formatCOP } from '@/lib/utils/currency'
+import { format_currency } from '@/lib/utils/currency'
 import { delete_product, restore_product } from '@/actions/inventory'
 
 interface ProductRow { id: string; name: string; sku: string | null; unit: string; cost_price: number; sell_price: number; stock_qty: number; min_stock: number; is_active: boolean }
@@ -118,8 +118,8 @@ export default function InventoryPage() {
                                         <td className="py-3 px-4 font-medium">{p.name}</td>
                                         <td className="py-3 px-4 text-muted-foreground font-mono text-xs">{p.sku || '—'}</td>
                                         <td className="py-3 px-4 text-center">{p.unit}</td>
-                                        <td className="py-3 px-4 text-right">{formatCOP(p.cost_price)}</td>
-                                        <td className="py-3 px-4 text-right font-semibold">{formatCOP(p.sell_price)}</td>
+                                        <td className="py-3 px-4 text-right">{format_currency(p.cost_price)}</td>
+                                        <td className="py-3 px-4 text-right font-semibold">{format_currency(p.sell_price)}</td>
                                         <td className="py-3 px-4 text-center">
                                             <Badge variant={isLow ? 'destructive' : 'secondary'} className="text-xs">
                                                 {isLow && <AlertTriangle className="w-3 h-3 mr-1" />}

@@ -31,7 +31,7 @@ async function verify() {
     const client = createClient(url, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
     const { data: session, error: loginError } = await client.auth.signInWithPassword({
         email: 'admin@wsm.com',
-        password: 'wilsonsinuco'
+        password: 'wilson'
     });
     
     if (loginError) console.error('Login Error:', loginError);

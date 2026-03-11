@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/stores'
 import { toast } from 'sonner'
-import { formatCOP } from '@/lib/utils/currency'
+import { format_currency } from '@/lib/utils/currency'
 import { process_direct_sale, create_express_appointment } from '@/actions/pos'
 
 interface ProductItem { id: string; name: string; sell_price: number; stock_qty: number; type: 'product' }
@@ -167,13 +167,13 @@ export default function POSPage() {
                         {receiptData.items.map((it: any, i: number) => (
                             <div key={i} className="flex justify-between items-center mb-1">
                                 <span className="flex-1 truncate pr-2">{it.qty}x {it.name.substring(0, 15)}</span>
-                                <span className="font-semibold">{formatCOP(it.price * it.qty)}</span>
+                                <span className="font-semibold">{format_currency(it.price * it.qty)}</span>
                             </div>
                         ))}
                     </div>
                     <div className="flex justify-between items-center font-bold text-lg">
                         <span>TOTAL</span>
-                        <span>{formatCOP(receiptData.total)}</span>
+                        <span>{format_currency(receiptData.total)}</span>
                     </div>
                     <p className="text-center text-xs mt-6">¡Gracias por tu visita!</p>
                 </div>
@@ -193,7 +193,7 @@ export default function POSPage() {
                                     <Card key={s.id} className="cursor-pointer hover:border-brand transition-colors" onClick={() => addToCart(s)}>
                                         <CardContent className="p-3 text-center">
                                             <p className="font-medium text-sm line-clamp-2 min-h-[40px]">{s.name}</p>
-                                            <Badge variant="outline" className="mt-2 text-brand font-semibold">{formatCOP(s.price)}</Badge>
+                                            <Badge variant="outline" className="mt-2 text-brand font-semibold">{format_currency(s.price)}</Badge>
                                         </CardContent>
                                     </Card>
                                 ))}
@@ -207,7 +207,7 @@ export default function POSPage() {
                                             <p className="font-medium text-sm line-clamp-2 min-h-[40px]">{p.name}</p>
                                             <div className="flex items-center justify-between mt-2">
                                                 <span className="text-xs text-muted-foreground font-mono">Stock: {p.stock_qty}</span>
-                                                <Badge className="bg-green-500 hover:bg-green-600 font-semibold">{formatCOP(p.sell_price)}</Badge>
+                                                <Badge className="bg-green-500 hover:bg-green-600 font-semibold">{format_currency(p.sell_price)}</Badge>
                                             </div>
                                         </CardContent>
                                     </Card>
@@ -242,7 +242,7 @@ export default function POSPage() {
                                                 <span className="text-xs font-mono w-4 text-center">{c.qty}</span>
                                                 {c.type === 'product' && <Button variant="outline" size="sm" className="h-6 w-6 p-0" onClick={() => updateQty(c.id, 1)}><Plus className="w-3 h-3" /></Button>}
                                             </div>
-                                            <span className="font-semibold text-sm">{formatCOP(c.price * c.qty)}</span>
+                                            <span className="font-semibold text-sm">{format_currency(c.price * c.qty)}</span>
                                         </div>
                                     </div>
                                 ))}
@@ -252,7 +252,7 @@ export default function POSPage() {
                         <div className="bg-background rounded-lg border border-border/50 p-3 space-y-3">
                             <div className="flex justify-between items-center font-bold text-lg">
                                 <span>TOTAL</span>
-                                <span className={hasProducts ? 'text-green-500' : 'text-brand'}>{formatCOP(cartTotal)}</span>
+                                <span className={hasProducts ? 'text-green-500' : 'text-brand'}>{format_currency(cartTotal)}</span>
                             </div>
 
                             {hasServices && (
@@ -281,7 +281,7 @@ export default function POSPage() {
 
                         <div className="pt-2 grid gap-2">
                             <Button className="w-full gradient-brand text-white shadow-md hover:shadow-lg transition-all" size="lg" disabled={cart.length === 0 || processing || (hasProducts && !activeRegister)} onClick={processSale}>
-                                {processing ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Procesando...</> : <><CheckCircle2 className="w-4 h-4 mr-2" /> Cobrar {formatCOP(cartTotal)}</>}
+                                {processing ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Procesando...</> : <><CheckCircle2 className="w-4 h-4 mr-2" /> Cobrar {format_currency(cartTotal)}</>}
                             </Button>
 
                             {receiptData && (
