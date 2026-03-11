@@ -15,6 +15,7 @@ import { createClient } from '@/lib/supabase/client'
 import { TIMEZONE_OPTIONS } from '@/lib/constants'
 import { toast } from 'sonner'
 import type { Business } from '@/types'
+import { delete_business, restore_business } from '@/actions/businesses'
 
 interface BusinessWithCounts extends Business {
     locations: { count: number }[]
@@ -28,8 +29,9 @@ export default function BusinessesPage() {
     const [loading, setLoading] = useState(true)
     const [dialogOpen, setDialogOpen] = useState(false)
     const [deleteOpen, setDeleteOpen] = useState(false)
+    const [restoreOpen, setRestoreOpen] = useState(false)
     const [editingId, setEditingId] = useState<string | null>(null)
-    const [deleteId, setDeleteId] = useState<string | null>(null)
+    const [targetId, setTargetId] = useState<string | null>(null)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState(emptyForm)
     const [logoFile, setLogoFile] = useState<File | null>(null)
@@ -57,7 +59,8 @@ export default function BusinessesPage() {
         setLogoFile(null)
         setDialogOpen(true)
     }
-    const openDelete = (id: string) => { setDeleteId(id); setDeleteOpen(true) }
+    const openDelete = (id: string) => { setTargetId(id); setDeleteOpen(true) }
+    const openRestore = (id: string) => { setTargetId(id); setRestoreOpen(true) }
 
     const handleSave = async () => {
         setSaving(true)
@@ -101,12 +104,23 @@ export default function BusinessesPage() {
     }
 
     const handleDelete = async () => {
-        if (!deleteId) return
-        const supabase = createClient()
-        const { error } = await supabase.from('businesses').update({ is_active: false }).eq('id', deleteId)
-        if (error) { toast.error(error.message); return }
-        toast.success('Negocio desactivado')
-        setDeleteOpen(false); setDeleteId(null); fetchBusinesses()
+        if (!targetId) return
+        const result = await delete_business(targetId)
+        if (result?.success) {
+            toast.success('Negocio desactivado')
+            fetchBusinesses()
+        }
+        setDeleteOpen(false); setTargetId(null)
+    }
+
+    const handleRestore = async () => {
+        if (!targetId) return
+        const result = await restore_business(targetId)
+        if (result?.success) {
+            toast.success('Negocio restaurado')
+            fetchBusinesses()
+        }
+        setRestoreOpen(false); setTargetId(null)
     }
 
     const openHardDelete = (biz: BusinessWithCounts) => {
@@ -143,7 +157,7 @@ export default function BusinessesPage() {
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {businesses.map((biz) => (
-                        <Card key={biz.id} className="group hover:shadow-lg transition-all duration-300 border-border/50 bg-card/80 backdrop-blur-sm">
+                        <Card key={biz.id} className={`group transition-all duration-300 border-border/50 bg-card/80 backdrop-blur-sm ${biz.is_active ? 'hover:shadow-lg' : 'opacity-60 grayscale-[0.5]'}`}>
                             <CardHeader className="pb-3">
                                 <div className="flex items-start justify-between">
                                     <div className="flex items-center gap-3">
@@ -180,7 +194,15 @@ export default function BusinessesPage() {
                                 {biz.nit && <p className="text-xs text-muted-foreground">NIT: {biz.nit}</p>}
                                 <div className="flex gap-2 pt-2 flex-wrap">
                                     <Button variant="outline" size="sm" onClick={() => openEdit(biz)}><Pencil className="w-3 h-3 mr-1" />Editar</Button>
-                                    <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => openDelete(biz.id)}><Trash2 className="w-3 h-3 mr-1" />Desactivar</Button>
+                                    {biz.is_active ? (
+                                        <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => openDelete(biz.id)}>
+                                            <Trash2 className="w-3 h-3 mr-1" />Desactivar
+                                        </Button>
+                                    ) : (
+                                        <Button variant="ghost" size="sm" className="text-brand hover:text-brand" onClick={() => openRestore(biz.id)}>
+                                            <Loader2 className="w-3 h-3 mr-1" />Restaurar
+                                        </Button>
+                                    )}
                                     <Button variant="ghost" size="sm" className="text-red-700 hover:text-red-700 hover:bg-red-500/10" onClick={() => openHardDelete(biz)}><Bomb className="w-3 h-3 mr-1" />Eliminar</Button>
                                 </div>
                             </CardContent>
@@ -274,16 +296,29 @@ export default function BusinessesPage() {
                 </DialogContent>
             </Dialog>
 
-            {/* Deactivate Confirmation */}
+            {/* Deactivate / Restore Confirmation */}
             <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
                         <AlertDialogTitle>¿Desactivar negocio?</AlertDialogTitle>
-                        <AlertDialogDescription>El negocio será desactivado. Los usuarios no podrán acceder hasta que se reactive.</AlertDialogDescription>
+                        <AlertDialogDescription>El negocio será desactivado y no será visible operativamente. Sus datos financieros se conservan.</AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                         <AlertDialogCancel>Cancelar</AlertDialogCancel>
                         <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground">Desactivar</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
+            <AlertDialog open={restoreOpen} onOpenChange={setRestoreOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>¿Restaurar negocio?</AlertDialogTitle>
+                        <AlertDialogDescription>El negocio volverá a estar activo y funcional.</AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleRestore} className="bg-brand text-primary-foreground">Restaurar</AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>

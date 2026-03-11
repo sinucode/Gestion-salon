@@ -14,6 +14,8 @@ import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/stores'
 import { toast } from 'sonner'
 
+import { delete_location, restore_location } from '@/actions/businesses'
+
 interface LocationRow {
     id: string; business_id: string; name: string; address: string | null; phone: string | null; is_active: boolean
     business?: { name: string } | null
@@ -30,8 +32,9 @@ export default function LocationsPage() {
     const [loading, setLoading] = useState(true)
     const [dialogOpen, setDialogOpen] = useState(false)
     const [deleteOpen, setDeleteOpen] = useState(false)
+    const [restoreOpen, setRestoreOpen] = useState(false)
     const [editingId, setEditingId] = useState<string | null>(null)
-    const [deleteId, setDeleteId] = useState<string | null>(null)
+    const [targetId, setTargetId] = useState<string | null>(null)
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState(emptyForm)
 
@@ -52,7 +55,8 @@ export default function LocationsPage() {
         setForm({ name: loc.name, address: loc.address || '', phone: loc.phone || '', is_active: loc.is_active })
         setDialogOpen(true)
     }
-    const openDelete = (id: string) => { setDeleteId(id); setDeleteOpen(true) }
+    const openDelete = (id: string) => { setTargetId(id); setDeleteOpen(true) }
+    const openRestore = (id: string) => { setTargetId(id); setRestoreOpen(true) }
 
     const handleSave = async () => {
         if (!filterBusinessId && !editingId) { toast.error('Selecciona un negocio primero'); return }
@@ -73,12 +77,23 @@ export default function LocationsPage() {
     }
 
     const handleDelete = async () => {
-        if (!deleteId) return
-        const supabase = createClient()
-        const { error } = await supabase.from('locations').update({ is_active: false }).eq('id', deleteId)
-        if (error) { toast.error(error.message); return }
-        toast.success('Sede desactivada')
-        setDeleteOpen(false); setDeleteId(null); fetchLocations()
+        if (!targetId) return
+        const result = await delete_location(targetId)
+        if (result?.success) {
+            toast.success('Sede desactivada')
+            fetchLocations()
+        }
+        setDeleteOpen(false); setTargetId(null)
+    }
+
+    const handleRestore = async () => {
+        if (!targetId) return
+        const result = await restore_location(targetId)
+        if (result?.success) {
+            toast.success('Sede restaurada')
+            fetchLocations()
+        }
+        setRestoreOpen(false); setTargetId(null)
     }
 
     if (loading) return <div className="flex items-center justify-center py-24"><Loader2 className="w-8 h-8 animate-spin text-muted-foreground" /></div>
@@ -102,7 +117,7 @@ export default function LocationsPage() {
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {locations.map((loc) => (
-                        <Card key={loc.id} className="group hover:shadow-lg transition-all duration-300 border-border/50 bg-card/80 backdrop-blur-sm">
+                        <Card key={loc.id} className={`group transition-all duration-300 border-border/50 bg-card/80 backdrop-blur-sm ${loc.is_active ? 'hover:shadow-lg' : 'opacity-60 grayscale-[0.5]'}`}>
                             <CardHeader className="pb-3">
                                 <div className="flex items-start justify-between">
                                     <CardTitle className="text-lg flex items-center gap-2"><MapPin className="w-4 h-4 text-violet-500" />{loc.name}</CardTitle>
@@ -115,7 +130,15 @@ export default function LocationsPage() {
                                 {loc.phone && <p className="text-sm text-muted-foreground flex items-center gap-1"><Phone className="w-3 h-3" />{loc.phone}</p>}
                                 <div className="flex gap-2 pt-2">
                                     <Button variant="outline" size="sm" onClick={() => openEdit(loc)}><Pencil className="w-3 h-3 mr-1" />Editar</Button>
-                                    <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => openDelete(loc.id)}><Trash2 className="w-3 h-3 mr-1" />Desactivar</Button>
+                                    {loc.is_active ? (
+                                        <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => openDelete(loc.id)}>
+                                            <Trash2 className="w-3 h-3 mr-1" />Desactivar
+                                        </Button>
+                                    ) : (
+                                        <Button variant="ghost" size="sm" className="text-brand hover:text-brand" onClick={() => openRestore(loc.id)}>
+                                            <Loader2 className="w-3 h-3 mr-1" />Restaurar
+                                        </Button>
+                                    )}
                                 </div>
                             </CardContent>
                         </Card>
@@ -144,8 +167,15 @@ export default function LocationsPage() {
 
             <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
                 <AlertDialogContent>
-                    <AlertDialogHeader><AlertDialogTitle>¿Desactivar sede?</AlertDialogTitle><AlertDialogDescription>La sede será desactivada y no será visible para los usuarios.</AlertDialogDescription></AlertDialogHeader>
+                    <AlertDialogHeader><AlertDialogTitle>¿Desactivar sede?</AlertDialogTitle><AlertDialogDescription>La sede será desactivada y no será visible en los menús operativos. Sus históricos financieros se mantendrán intactos.</AlertDialogDescription></AlertDialogHeader>
                     <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground">Desactivar</AlertDialogAction></AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
+            <AlertDialog open={restoreOpen} onOpenChange={setRestoreOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader><AlertDialogTitle>¿Restaurar sede?</AlertDialogTitle><AlertDialogDescription>La sede volverá a estar activa y visible en los menús operativos.</AlertDialogDescription></AlertDialogHeader>
+                    <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={handleRestore} className="bg-brand text-primary-foreground">Restaurar</AlertDialogAction></AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
         </div>

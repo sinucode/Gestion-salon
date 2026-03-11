@@ -16,6 +16,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/stores'
 import { toast } from 'sonner'
 import { formatCOP } from '@/lib/utils/currency'
+import { delete_category, restore_category, delete_service, restore_service } from '@/actions/catalog'
 
 interface CategoryRow { id: string; business_id: string; name: string; description: string | null; sort_order: number; is_active: boolean }
 interface ServiceRow { id: string; category_id: string; name: string; description: string | null; price: number; duration_min: number; commission_pct: number; is_active: boolean; category?: { name: string } }
@@ -45,6 +46,8 @@ export default function CatalogPage() {
     const [svcForm, setSvcForm] = useState(emptySvc)
     const [svcDeleteOpen, setSvcDeleteOpen] = useState(false)
     const [svcDeleteId, setSvcDeleteId] = useState<string | null>(null)
+    const [catRestoreOpen, setCatRestoreOpen] = useState(false)
+    const [svcRestoreOpen, setSvcRestoreOpen] = useState(false)
     const [saving, setSaving] = useState(false)
 
     const fetchData = async () => {
@@ -80,9 +83,15 @@ export default function CatalogPage() {
     }
     const deleteCat = async () => {
         if (!catDeleteId) return
-        const supabase = createClient()
-        await supabase.from('categories').update({ is_active: false }).eq('id', catDeleteId)
-        toast.success('Categoría desactivada'); setCatDeleteOpen(false); setCatDeleteId(null); fetchData()
+        const result = await delete_category(catDeleteId)
+        if (result?.success) { toast.success('Categoría desactivada'); fetchData() }
+        setCatDeleteOpen(false); setCatDeleteId(null)
+    }
+    const restoreCat = async () => {
+        if (!catDeleteId) return
+        const result = await restore_category(catDeleteId)
+        if (result?.success) { toast.success('Categoría restaurada'); fetchData() }
+        setCatRestoreOpen(false); setCatDeleteId(null)
     }
 
     // Service CRUD
@@ -104,9 +113,15 @@ export default function CatalogPage() {
     }
     const deleteSvc = async () => {
         if (!svcDeleteId) return
-        const supabase = createClient()
-        await supabase.from('services').update({ is_active: false }).eq('id', svcDeleteId)
-        toast.success('Servicio desactivado'); setSvcDeleteOpen(false); setSvcDeleteId(null); fetchData()
+        const result = await delete_service(svcDeleteId)
+        if (result?.success) { toast.success('Servicio desactivado'); fetchData() }
+        setSvcDeleteOpen(false); setSvcDeleteId(null)
+    }
+    const restoreSvc = async () => {
+        if (!svcDeleteId) return
+        const result = await restore_service(svcDeleteId)
+        if (result?.success) { toast.success('Servicio restaurado'); fetchData() }
+        setSvcRestoreOpen(false); setSvcDeleteId(null)
     }
 
     if (loading) return <div className="flex items-center justify-center py-24"><Loader2 className="w-8 h-8 animate-spin text-muted-foreground" /></div>
@@ -134,7 +149,7 @@ export default function CatalogPage() {
                     ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             {categories.map(c => (
-                                <Card key={c.id} className="border-border/50 bg-card/80 backdrop-blur-sm hover:shadow-lg transition-all">
+                                <Card key={c.id} className={`border-border/50 bg-card/80 backdrop-blur-sm transition-all ${c.is_active ? 'hover:shadow-lg' : 'opacity-60 grayscale-[0.5]'}`}>
                                     <CardHeader className="pb-2">
                                         <div className="flex justify-between items-start">
                                             <CardTitle className="text-base">{c.name}</CardTitle>
@@ -145,7 +160,11 @@ export default function CatalogPage() {
                                         {c.description && <p className="text-xs text-muted-foreground mb-3">{c.description}</p>}
                                         <div className="flex gap-2">
                                             <Button variant="outline" size="sm" onClick={() => openCatEdit(c)}><Pencil className="w-3 h-3 mr-1" />Editar</Button>
-                                            <Button variant="ghost" size="sm" className="text-destructive" onClick={() => { setCatDeleteId(c.id); setCatDeleteOpen(true) }}><Trash2 className="w-3 h-3" /></Button>
+                                            {c.is_active ? (
+                                                <Button variant="ghost" size="sm" className="text-destructive" onClick={() => { setCatDeleteId(c.id); setCatDeleteOpen(true) }}><Trash2 className="w-3 h-3" /></Button>
+                                            ) : (
+                                                <Button variant="ghost" size="sm" className="text-brand" onClick={() => { setCatDeleteId(c.id); setCatRestoreOpen(true) }}><Loader2 className="w-3 h-3" /></Button>
+                                            )}
                                         </div>
                                     </CardContent>
                                 </Card>
@@ -171,7 +190,7 @@ export default function CatalogPage() {
                                         <th className="text-center py-3 px-4 font-medium text-muted-foreground">Acciones</th>
                                     </tr></thead>
                                     <tbody>{services.map(s => (
-                                        <tr key={s.id} className="border-b border-border/20 hover:bg-muted/30">
+                                        <tr key={s.id} className={`border-b border-border/20 transition-colors ${s.is_active ? 'hover:bg-muted/30' : 'opacity-60 grayscale-[0.5]'}`}>
                                             <td className="py-3 px-4 font-medium">{s.name}</td>
                                             <td className="py-3 px-4 text-muted-foreground">{s.category?.name || '—'}</td>
                                             <td className="py-3 px-4 text-right font-semibold">{formatCOP(s.price)}</td>
@@ -179,7 +198,11 @@ export default function CatalogPage() {
                                             <td className="py-3 px-4 text-center">{s.commission_pct}%</td>
                                             <td className="py-3 px-4 text-center">
                                                 <Button variant="ghost" size="sm" onClick={() => openSvcEdit(s)}><Pencil className="w-3 h-3" /></Button>
-                                                <Button variant="ghost" size="sm" className="text-destructive" onClick={() => { setSvcDeleteId(s.id); setSvcDeleteOpen(true) }}><Trash2 className="w-3 h-3" /></Button>
+                                                {s.is_active ? (
+                                                    <Button variant="ghost" size="sm" className="text-destructive" onClick={() => { setSvcDeleteId(s.id); setSvcDeleteOpen(true) }}><Trash2 className="w-3 h-3" /></Button>
+                                                ) : (
+                                                    <Button variant="ghost" size="sm" className="text-brand" onClick={() => { setSvcDeleteId(s.id); setSvcRestoreOpen(true) }}><Loader2 className="w-3 h-3" /></Button>
+                                                )}
                                             </td>
                                         </tr>
                                     ))}</tbody>
@@ -227,14 +250,23 @@ export default function CatalogPage() {
                 </DialogContent>
             </Dialog>
 
-            {/* Delete dialogs */}
+            {/* Delete/Restore dialogs */}
             <AlertDialog open={catDeleteOpen} onOpenChange={setCatDeleteOpen}>
                 <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>¿Desactivar categoría?</AlertDialogTitle></AlertDialogHeader>
                     <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={deleteCat} className="bg-destructive text-destructive-foreground">Desactivar</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
             </AlertDialog>
+            <AlertDialog open={catRestoreOpen} onOpenChange={setCatRestoreOpen}>
+                <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>¿Restaurar categoría?</AlertDialogTitle></AlertDialogHeader>
+                    <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={restoreCat} className="bg-brand text-primary-foreground">Restaurar</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
+            </AlertDialog>
+
             <AlertDialog open={svcDeleteOpen} onOpenChange={setSvcDeleteOpen}>
                 <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>¿Desactivar servicio?</AlertDialogTitle></AlertDialogHeader>
                     <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={deleteSvc} className="bg-destructive text-destructive-foreground">Desactivar</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
+            </AlertDialog>
+            <AlertDialog open={svcRestoreOpen} onOpenChange={setSvcRestoreOpen}>
+                <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>¿Restaurar servicio?</AlertDialogTitle></AlertDialogHeader>
+                    <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={restoreSvc} className="bg-brand text-primary-foreground">Restaurar</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
             </AlertDialog>
         </div>
     )

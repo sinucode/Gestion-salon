@@ -131,3 +131,43 @@ export async function updateLocation(id: string, input: Partial<z.infer<typeof L
     revalidatePath('/admin/locations')
     return location
 }
+
+// ============================================
+// DEACTIVATION CRUD (Logical Deletes)
+// ============================================
+
+export async function delete_business(id: string) {
+    const supabase = await createClient()
+    await requireRole(supabase, [ROLES.SUPER_ADMIN])
+    const { error } = await supabase.from('businesses').update({ is_active: false }).eq('id', id)
+    if (error) throw new Error(error.message)
+    revalidatePath('/super-admin/businesses')
+    return { success: true }
+}
+
+export async function restore_business(id: string) {
+    const supabase = await createClient()
+    await requireRole(supabase, [ROLES.SUPER_ADMIN])
+    const { error } = await supabase.from('businesses').update({ is_active: true }).eq('id', id)
+    if (error) throw new Error(error.message)
+    revalidatePath('/super-admin/businesses')
+    return { success: true }
+}
+
+export async function delete_location(id: string) {
+    const supabase = await createClient()
+    await requireRole(supabase, [ROLES.SUPER_ADMIN, ROLES.ADMIN])
+    const { error } = await supabase.from('locations').update({ is_active: false }).eq('id', id)
+    if (error) throw new Error(error.message)
+    revalidatePath('/admin/locations')
+    return { success: true }
+}
+
+export async function restore_location(id: string) {
+    const supabase = await createClient()
+    await requireRole(supabase, [ROLES.SUPER_ADMIN, ROLES.ADMIN])
+    const { error } = await supabase.from('locations').update({ is_active: true }).eq('id', id)
+    if (error) throw new Error(error.message)
+    revalidatePath('/admin/locations')
+    return { success: true }
+}
