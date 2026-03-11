@@ -124,34 +124,38 @@ export async function close_cash_register(input: {
     location_id: string;
     declarations: AccountDeclaration[];
 }) {
+    const { id, business_id, location_id, declarations } = input
     const supabase = await createClient()
     await requireRole(supabase, [ROLES.SUPER_ADMIN, ROLES.ADMIN])
+
+    if (!business_id || !location_id) throw new Error('business_id y location_id son obligatorios para el arqueo.')
+
     const { data: { user } } = await supabase.auth.getUser()
 
-    const final_amount = input.declarations.reduce((acc, d) => acc + d.real, 0)
+    const final_amount = declarations.reduce((acc, d) => acc + d.real, 0)
 
     const { data, error } = await supabase.from('cash_registers').update({
         status: 'closed',
         closed_at: new Date().toISOString(),
         closed_by: user!.id,
         final_amount,
-        notes: input.declarations.filter(d => d.difference !== 0).map(d => `${d.justification}`).join(' | ') || null
-    }).eq('id', input.id).select().single()
+        notes: declarations.filter(d => d.difference !== 0).map(d => `${d.justification}`).join(' | ') || null
+    }).eq('id', id).select().single()
 
     if (error) throw new Error(error.message)
 
     // Insert adjustments for discrepancies
-    for (const d of input.declarations) {
+    for (const d of declarations) {
         if (d.difference !== 0) {
             const isSobrante = d.difference > 0
             await supabase.from('cash_movements').insert({
-                business_id: input.business_id,
-                location_id: input.location_id,
+                business_id: business_id,
+                location_id: location_id,
                 account_id: d.account_id,
-                cash_register_id: input.id,
+                cash_register_id: id,
                 type: isSobrante ? 'adjustment_in' : 'adjustment_out',
                 amount: Math.abs(d.difference),
-                description: `${isSobrante ? 'Sobrante' : 'Faltante'} al cierre: ${d.justification}`,
+                description: `${isSobrante ? 'Sobrante' : 'Faltante'} en cierre: ${d.justification}`,
                 created_by: user!.id
             })
         }
