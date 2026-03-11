@@ -17,11 +17,11 @@ import { toast } from 'sonner'
 import { open_cash_register, close_cash_register, transfer_funds, process_payout, create_expense, get_z_report_details } from '@/actions/finance'
 
 export default function FinanceERPPage() {
-    const { user, selectedBusinessId, timezone } = useAuthStore()
+    const { user, selectedBusinessId, selectedLocationId, timezone } = useAuthStore()
     const isSuperAdmin = user?.role === 'super_admin'
     const isAdmin = user?.role === 'admin'
     const filterBusinessId = isSuperAdmin ? selectedBusinessId : user?.business_id
-    const defaultLocationId = user?.location_id
+    const defaultLocationId = user?.location_id || null
 
     const [loading, setLoading] = useState(true)
     const [activeTab, setActiveTab] = useState('pnl')
@@ -31,7 +31,6 @@ export default function FinanceERPPage() {
     const defaultEnd = new Date().toISOString().split('T')[0]
     const [startDate, setStartDate] = useState(defaultStart)
     const [endDate, setEndDate] = useState(defaultEnd)
-    const [selectedLocation, setSelectedLocation] = useState<string>('')
     const [locationsList, setLocationsList] = useState<any[]>([])
 
     // Data states
@@ -63,7 +62,7 @@ export default function FinanceERPPage() {
     const [activeRegId, setActiveRegId] = useState<string | null>(null)
     const [activeLocId, setActiveLocId] = useState<string | null>(null)
 
-    const isGlobalView = selectedLocation === 'all' || !activeLocId
+    const isGlobalView = selectedLocationId === 'all' || !activeLocId
     const activeLocationName = locationsList.find(l => l.id === activeLocId)?.name || 'Desconocida'
 
     // Printing state
@@ -74,7 +73,7 @@ export default function FinanceERPPage() {
         if (!filterBusinessId) { setLoading(false); return }
         const supabase = createClient()
         
-        let locFilter = selectedLocation || defaultLocationId
+        let locFilter = selectedLocationId === 'all' ? null : (selectedLocationId || defaultLocationId)
         
         if ((isSuperAdmin || isAdmin) && locationsList.length === 0) {
             const { data: locs } = await supabase.from('locations').select('id, name').eq('business_id', filterBusinessId)
@@ -91,17 +90,20 @@ export default function FinanceERPPage() {
                     }
                 }
                 setLocationsList(filteredLocs)
-                if (!locFilter && filteredLocs.length > 0) locFilter = filteredLocs[0].id
-                if (!selectedLocation && locFilter) setSelectedLocation(locFilter)
+                if (!locFilter && filteredLocs.length > 0 && selectedLocationId !== 'all') {
+                    locFilter = filteredLocs[0].id
+                }
             }
         }
 
-        if (!locFilter) { setLoading(false); return }
+        if (!locFilter && selectedLocationId !== 'all') { setLoading(false); return }
+        
+        // If it's all, we still might need activeLocId to clear or stay null
         setActiveLocId(locFilter)
 
         // Date range filtering for P&L
         let pnlQuery = supabase.from('v_pnl').select('*').eq('business_id', filterBusinessId)
-        if (locFilter && selectedLocation !== 'all') pnlQuery = pnlQuery.eq('location_id', locFilter)
+        if (locFilter && selectedLocationId !== 'all') pnlQuery = pnlQuery.eq('location_id', locFilter)
         if (startDate) pnlQuery = pnlQuery.gte('date', startDate)
         if (endDate) pnlQuery = pnlQuery.lte('date', endDate)
 
@@ -115,12 +117,12 @@ export default function FinanceERPPage() {
             { data: resMov }
         ] = await Promise.all([
             pnlQuery,
-            supabase.from('accounts').select('*').eq('location_id', locFilter).eq('is_active', true),
-            supabase.from('v_cash_registers_summary').select('*').eq('location_id', locFilter).order('opened_at', { ascending: false }).limit(20),
-            supabase.from('v_professional_earnings').select('*, profile:profiles!v_professional_earnings_professional_id_fkey(first_name, last_name)').eq('location_id', locFilter),
-            supabase.from('payouts').select('*, profile:profiles!payouts_professional_id_fkey(first_name)').eq('location_id', locFilter).order('created_at', { ascending: false }).limit(20),
-            supabase.from('operating_expenses').select('*, creator:profiles!operating_expenses_created_by_fkey(first_name), account:accounts!operating_expenses_account_id_fkey(name)').eq('location_id', locFilter).order('created_at', { ascending: false }).limit(20),
-            supabase.from('cash_movements').select('*, creator:profiles!cash_movements_created_by_fkey(first_name), account:accounts(name)').eq('location_id', locFilter).order('created_at', { ascending: false }).limit(100)
+            locFilter ? supabase.from('accounts').select('*').eq('location_id', locFilter).eq('is_active', true) : Promise.resolve({ data: [] }),
+            locFilter ? supabase.from('v_cash_registers_summary').select('*').eq('location_id', locFilter).order('opened_at', { ascending: false }).limit(20) : Promise.resolve({ data: [] }),
+            locFilter ? supabase.from('v_professional_earnings').select('*, profile:profiles!v_professional_earnings_professional_id_fkey(first_name, last_name)').eq('location_id', locFilter) : Promise.resolve({ data: [] }),
+            locFilter ? supabase.from('payouts').select('*, profile:profiles!payouts_professional_id_fkey(first_name)').eq('location_id', locFilter).order('created_at', { ascending: false }).limit(20) : Promise.resolve({ data: [] }),
+            locFilter ? supabase.from('operating_expenses').select('*, creator:profiles!operating_expenses_created_by_fkey(first_name), account:accounts!operating_expenses_account_id_fkey(name)').eq('location_id', locFilter).order('created_at', { ascending: false }).limit(20) : Promise.resolve({ data: [] }),
+            locFilter ? supabase.from('cash_movements').select('*, creator:profiles!cash_movements_created_by_fkey(first_name), account:accounts(name)').eq('location_id', locFilter).order('created_at', { ascending: false }).limit(100) : Promise.resolve({ data: [] })
         ])
 
         if (resPnl) setPnl(resPnl)
@@ -138,7 +140,7 @@ export default function FinanceERPPage() {
         setLoading(false)
     }
 
-    useEffect(() => { setLoading(true); fetchData() }, [filterBusinessId, startDate, endDate, selectedLocation])
+    useEffect(() => { setLoading(true); fetchData() }, [filterBusinessId, startDate, endDate, selectedLocationId])
 
     const handleTransfer = async () => {
         if (isGlobalView) return toast.error('Debes seleccionar una sede física específica.')
@@ -437,18 +439,6 @@ export default function FinanceERPPage() {
                     <div className="flex flex-col sm:flex-row gap-4 items-end bg-muted/20 p-4 rounded-lg border border-border/50">
                         <div className="grid gap-1.5 flex-1"><Label>Desde</Label><Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} /></div>
                         <div className="grid gap-1.5 flex-1"><Label>Hasta</Label><Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} /></div>
-                        {(isSuperAdmin || isAdmin) && locationsList.length > 0 && (
-                            <div className="grid gap-1.5 flex-1">
-                                <Label>Sede de Reporte</Label>
-                                <Select value={selectedLocation} onValueChange={(v: string | null) => setSelectedLocation(v || '')}>
-                                    <SelectTrigger><SelectValue placeholder="Sede" /></SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="all">Consolidado Total</SelectItem>
-                                        {locationsList.map(l => <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>)}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                        )}
                         <Button variant="outline" onClick={() => fetchData()}>Refrescar Informe</Button>
                     </div>
 
