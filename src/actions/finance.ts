@@ -118,20 +118,45 @@ export async function open_cash_register(input: {
     return reg
 }
 
-export async function close_cash_register(id: string, final_amount: number, notes: string | null) {
+export async function close_cash_register(input: {
+    id: string;
+    business_id: string;
+    location_id: string;
+    declarations: AccountDeclaration[];
+}) {
     const supabase = await createClient()
     await requireRole(supabase, [ROLES.SUPER_ADMIN, ROLES.ADMIN])
     const { data: { user } } = await supabase.auth.getUser()
+
+    const final_amount = input.declarations.reduce((acc, d) => acc + d.real, 0)
 
     const { data, error } = await supabase.from('cash_registers').update({
         status: 'closed',
         closed_at: new Date().toISOString(),
         closed_by: user!.id,
         final_amount,
-        notes
-    }).eq('id', id).select().single()
+        notes: input.declarations.filter(d => d.difference !== 0).map(d => `${d.justification}`).join(' | ') || null
+    }).eq('id', input.id).select().single()
 
     if (error) throw new Error(error.message)
+
+    // Insert adjustments for discrepancies
+    for (const d of input.declarations) {
+        if (d.difference !== 0) {
+            const isSobrante = d.difference > 0
+            await supabase.from('cash_movements').insert({
+                business_id: input.business_id,
+                location_id: input.location_id,
+                account_id: d.account_id,
+                cash_register_id: input.id,
+                type: isSobrante ? 'adjustment_in' : 'adjustment_out',
+                amount: Math.abs(d.difference),
+                description: `${isSobrante ? 'Sobrante' : 'Faltante'} al cierre: ${d.justification}`,
+                created_by: user!.id
+            })
+        }
+    }
+
     revalidatePath('/finance')
     return data
 }

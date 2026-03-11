@@ -56,8 +56,9 @@ export default function FinanceERPPage() {
     const [formPayout, setFormPayout] = useState({ prof_id: '', account_id: '', amount: 0 })
     const [formExpense, setFormExpense] = useState({ category: '', account_id: '', amount: 0, description: '' })
     
-    // Multi-account opening declarations
+    // Multi-account declarations (opening & closing)
     const [declarations, setDeclarations] = useState<any[]>([])
+    const [closingDeclarations, setClosingDeclarations] = useState<any[]>([])
 
     const [activeRegId, setActiveRegId] = useState<string | null>(null)
     const [activeLocId, setActiveLocId] = useState<string | null>(null)
@@ -191,11 +192,65 @@ export default function FinanceERPPage() {
         } catch(e:any) { toast.error(e.message) }
     }
 
+    const initCloseRegister = () => {
+        const closeDecs = accounts.map(acc => ({
+            account_id: acc.id,
+            name: acc.name,
+            expected: acc.balance,
+            real: acc.balance,
+            difference: 0,
+            justification: ''
+        }))
+        setClosingDeclarations(closeDecs)
+        setOpenCloseReg(true)
+    }
+
+    const updateClosingDeclaration = (idx: number, realValue: number) => {
+        const newDecs = [...closingDeclarations]
+        const d = newDecs[idx]
+        d.real = realValue
+        d.difference = d.real - d.expected
+        setClosingDeclarations(newDecs)
+    }
+
+    const updateClosingJustification = (idx: number, text: string) => {
+        const newDecs = [...closingDeclarations]
+        newDecs[idx].justification = text
+        setClosingDeclarations(newDecs)
+    }
+
     const handleCloseReg = async () => {
+        if (!activeLocId) return toast.error('No hay sede seleccionada.')
+        const invalid = closingDeclarations.find(d => d.difference !== 0 && !d.justification.trim())
+        if (invalid) return toast.error(`Justifica la diferencia en: ${invalid.name}`)
+
         try {
-            await close_cash_register(activeRegId!, formClose.amount, formClose.notes)
-            toast.success('Arqueo Completado: Caja Cerrada')
+            await close_cash_register({
+                id: activeRegId!,
+                business_id: filterBusinessId!,
+                location_id: activeLocId,
+                declarations: closingDeclarations.map(d => ({
+                    account_id: d.account_id,
+                    expected: d.expected,
+                    real: d.real,
+                    difference: d.difference,
+                    justification: d.justification
+                }))
+            })
+            toast.success('Arqueo Z Completado: Caja Sellada')
             setOpenCloseReg(false)
+
+            // Trigger Z-Report printing
+            const locName = locationsList.find(l => l.id === activeLocId)?.name || 'Sede'
+            setReceiptData({
+                type: 'z_report',
+                date: new Date().toISOString(),
+                location: locName,
+                user: user?.first_name || 'Admin',
+                accounts: closingDeclarations.map(d => ({ name: d.name, real: d.real, diff: d.difference }))
+            })
+            setTimeout(() => window.print(), 500)
+
             fetchData()
         } catch(e:any) { toast.error(e.message) }
     }
@@ -284,6 +339,47 @@ export default function FinanceERPPage() {
                     <div className="mt-12 border-t border-black pt-2 text-center">
                         <p className="text-xs mb-8">.....................................................</p>
                         <p className="text-xs font-bold">Firma del Profesional</p>
+                    </div>
+                </div>
+            )}
+
+            {receiptData && receiptData.type === 'z_report' && (
+                <div className="hidden print:block text-black print-container font-mono text-sm leading-tight p-2 w-[80mm] mx-auto absolute top-0 left-0 bg-white">
+                    <h2 className="text-center font-bold text-lg mb-1">REPORTE Z</h2>
+                    <h3 className="text-center font-bold text-md mb-1">CIERRE DE CAJA</h3>
+                    <h4 className="text-center text-sm mb-2">{receiptData.location}</h4>
+                    <p className="text-center text-xs mb-4">{new Date(receiptData.date).toLocaleString('es-CO')}</p>
+                    <div className="border-t border-black py-2 mb-2">
+                        <p className="text-xs"><strong>Responsable:</strong> {receiptData.user}</p>
+                    </div>
+                    <div className="border-t border-b border-black py-2 mb-4">
+                        <p className="font-bold text-xs mb-1 uppercase">Detalle por Cuenta:</p>
+                        {receiptData.accounts.map((a: any, i: number) => (
+                            <div key={i} className="flex justify-between items-center mb-1">
+                                <span className="text-xs">{a.name}</span>
+                                <span className="text-xs font-bold">{format_currency(a.real)}</span>
+                            </div>
+                        ))}
+                    </div>
+                    <div className="flex justify-between items-center font-bold text-lg mb-4">
+                        <span>TOTAL FINAL:</span>
+                        <span>{format_currency(receiptData.accounts.reduce((s: number, a: any) => s + a.real, 0))}</span>
+                    </div>
+                    {receiptData.accounts.some((a: any) => a.diff !== 0) && (
+                        <div className="border-t border-black py-2 mb-4">
+                            <p className="font-bold text-xs mb-1 uppercase">Ajustes Registrados:</p>
+                            {receiptData.accounts.filter((a: any) => a.diff !== 0).map((a: any, i: number) => (
+                                <div key={i} className="flex justify-between text-xs">
+                                    <span>{a.name}</span>
+                                    <span className={a.diff > 0 ? '' : ''}>{a.diff > 0 ? '+' : ''}{format_currency(a.diff)}</span>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                    <div className="mt-12 border-t border-black pt-2 text-center">
+                        <p className="text-xs mb-8">.....................................................</p>
+                        <p className="text-xs font-bold">Firma del Administrador</p>
+                        <p className="text-[10px] mt-2 text-gray-500">Documento de cierre de operación diaria</p>
                     </div>
                 </div>
             )}
@@ -441,7 +537,14 @@ export default function FinanceERPPage() {
                 <TabsContent value="registers" className="space-y-4 pt-4">
                     <div className="flex justify-between items-center">
                         <h3 className="font-semibold text-lg flex items-center gap-2"><Lock className="w-5 h-5" /> Arqueos de Caja Diarios</h3>
-                        {!activeRegId && <Button className="bg-green-600 hover:bg-green-700 text-white" onClick={initOpenRegister}><Unlock className="w-4 h-4 mr-2" /> Realizar Apertura</Button>}
+                        <div className="flex gap-2">
+                            {activeRegId && (
+                                <Button variant="destructive" onClick={initCloseRegister}><Lock className="w-4 h-4 mr-2" /> Cerrar Caja (Reporte Z)</Button>
+                            )}
+                            {!activeRegId && (
+                                <Button className="bg-green-600 hover:bg-green-700 text-white" onClick={initOpenRegister}><Unlock className="w-4 h-4 mr-2" /> Realizar Apertura</Button>
+                            )}
+                        </div>
                     </div>
                     <Card className="border-border/50 bg-card/80"><CardContent className="p-0 overflow-x-auto">
                         <table className="w-full text-sm">
@@ -532,13 +635,47 @@ export default function FinanceERPPage() {
             </Dialog>
 
             <Dialog open={openCloseReg} onOpenChange={setOpenCloseReg}>
-                <DialogContent><DialogHeader><DialogTitle className="text-red-500">Arqueo Final & Cierre de Caja</DialogTitle></DialogHeader>
-                    <div className="grid gap-4 py-4">
-                        <div className="bg-red-500/10 border border-red-500/30 p-3 rounded-md text-xs text-red-500">Al cerrar la caja, todos los movimientos quedarán bloqueados por seguridad RLS.</div>
-                        <div><Label>Conteo Efectivo Real</Label><Input type="number" value={formClose.amount} onChange={e=>setFormClose(f=>({...f,amount:Number(e.target.value)}))} /></div>
-                        <div><Label>Notas</Label><Input value={formClose.notes} onChange={e=>setFormClose(f=>({...f,notes:e.target.value}))} /></div>
+                <DialogContent className="max-w-2xl">
+                    <DialogHeader><DialogTitle className="flex items-center gap-2 text-red-500"><Lock className="w-5 h-5" /> Arqueo Final – Reporte Z</DialogTitle></DialogHeader>
+                    <div className="py-4 space-y-4">
+                        <div className="bg-red-500/10 border border-red-500/30 p-3 rounded-md text-xs text-red-500 mb-2">Al sellar la caja, todos los movimientos del turno quedarán bloqueados. Verifica cada saldo físico.</div>
+                        <div className="border border-border/50 rounded-lg overflow-hidden">
+                            <table className="w-full text-sm">
+                                <thead className="bg-muted/30 font-medium"><tr>
+                                    <td className="p-2">Cuenta</td><td className="p-2 text-right">Saldo Sistema</td><td className="p-2 text-right">Saldo Físico Final</td><td className="p-2 text-right">Diferencia</td>
+                                </tr></thead>
+                                <tbody>
+                                    {closingDeclarations.map((d, i) => (
+                                        <tr key={i} className="border-t border-border/30">
+                                            <td className="p-2 font-medium">{d.name}</td>
+                                            <td className="p-2 text-right text-xs font-mono">{format_currency(d.expected)}</td>
+                                            <td className="p-2 text-right">
+                                                <Input type="number" value={d.real} className="h-8 w-24 text-right ml-auto" onChange={e => updateClosingDeclaration(i, Number(e.target.value))} />
+                                            </td>
+                                            <td className={`p-2 text-right font-bold ${d.difference === 0 ? 'text-muted-foreground' : d.difference > 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                                {format_currency(d.difference)}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                        {closingDeclarations.some(d => d.difference !== 0) && (
+                            <div className="space-y-3 bg-red-500/5 p-3 rounded-lg border border-red-500/20">
+                                <Label className="text-red-500 font-bold flex items-center gap-1"><ShieldCheck className="w-4 h-4" /> Justificación de Discrepancias (Obligatorio)</Label>
+                                {closingDeclarations.map((d, i) => d.difference !== 0 && (
+                                    <div key={i} className="space-y-1">
+                                        <span className="text-[10px] uppercase font-bold text-muted-foreground">{d.name}</span>
+                                        <Input placeholder={`Razón del ${d.difference > 0 ? 'Sobrante' : 'Faltante'}...`} value={d.justification} onChange={e => updateClosingJustification(i, e.target.value)} className="h-8 text-xs border-red-500/30" />
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
-                <DialogFooter><Button variant="destructive" className="w-full" onClick={handleCloseReg}>Sellar Operación Hoy</Button></DialogFooter></DialogContent>
+                    <DialogFooter>
+                        <Button variant="destructive" className="w-full shadow-lg" onClick={handleCloseReg} disabled={closingDeclarations.some(d => d.difference !== 0 && !d.justification.trim())}>Sellar Caja & Generar Reporte Z</Button>
+                    </DialogFooter>
+                </DialogContent>
             </Dialog>
 
             <Dialog open={openPayout} onOpenChange={setOpenPayout}>
