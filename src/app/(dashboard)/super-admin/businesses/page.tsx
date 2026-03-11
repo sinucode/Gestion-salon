@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Building2, Plus, MapPin, Users, Loader2, Globe, Pencil, Trash2, Palette, Upload } from 'lucide-react'
+import { Building2, Plus, MapPin, Users, Loader2, Globe, Pencil, Trash2, Palette, Upload, AlertTriangle, Bomb } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -34,6 +34,12 @@ export default function BusinessesPage() {
     const [form, setForm] = useState(emptyForm)
     const [logoFile, setLogoFile] = useState<File | null>(null)
     const fileInputRef = useRef<HTMLInputElement>(null)
+    // Hard delete state
+    const [hardDeleteOpen, setHardDeleteOpen] = useState(false)
+    const [hardDeleteId, setHardDeleteId] = useState<string | null>(null)
+    const [hardDeleteName, setHardDeleteName] = useState('')
+    const [confirmName, setConfirmName] = useState('')
+    const [deleting, setDeleting] = useState(false)
 
     const fetchBusinesses = async () => {
         const supabase = createClient()
@@ -103,6 +109,23 @@ export default function BusinessesPage() {
         setDeleteOpen(false); setDeleteId(null); fetchBusinesses()
     }
 
+    const openHardDelete = (biz: BusinessWithCounts) => {
+        setHardDeleteId(biz.id)
+        setHardDeleteName(biz.name)
+        setConfirmName('')
+        setHardDeleteOpen(true)
+    }
+
+    const handleHardDelete = async () => {
+        if (!hardDeleteId || confirmName !== hardDeleteName) return
+        setDeleting(true)
+        const supabase = createClient()
+        const { error } = await supabase.rpc('hard_delete_business', { business_uuid: hardDeleteId })
+        if (error) { toast.error('Error eliminando: ' + error.message); setDeleting(false); return }
+        toast.success('Negocio eliminado permanentemente')
+        setDeleting(false); setHardDeleteOpen(false); setHardDeleteId(null); fetchBusinesses()
+    }
+
     if (loading) return <div className="flex items-center justify-center py-24"><Loader2 className="w-8 h-8 animate-spin text-muted-foreground" /></div>
 
     return (
@@ -155,9 +178,10 @@ export default function BusinessesPage() {
                                     )}
                                 </div>
                                 {biz.nit && <p className="text-xs text-muted-foreground">NIT: {biz.nit}</p>}
-                                <div className="flex gap-2 pt-2">
+                                <div className="flex gap-2 pt-2 flex-wrap">
                                     <Button variant="outline" size="sm" onClick={() => openEdit(biz)}><Pencil className="w-3 h-3 mr-1" />Editar</Button>
                                     <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => openDelete(biz.id)}><Trash2 className="w-3 h-3 mr-1" />Desactivar</Button>
+                                    <Button variant="ghost" size="sm" className="text-red-700 hover:text-red-700 hover:bg-red-500/10" onClick={() => openHardDelete(biz)}><Bomb className="w-3 h-3 mr-1" />Eliminar</Button>
                                 </div>
                             </CardContent>
                         </Card>
@@ -250,7 +274,7 @@ export default function BusinessesPage() {
                 </DialogContent>
             </Dialog>
 
-            {/* Delete Confirmation */}
+            {/* Deactivate Confirmation */}
             <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
@@ -263,6 +287,54 @@ export default function BusinessesPage() {
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
+
+            {/* Hard Delete Confirmation */}
+            <Dialog open={hardDeleteOpen} onOpenChange={setHardDeleteOpen}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-red-600">
+                            <AlertTriangle className="w-5 h-5" />
+                            Eliminar Negocio Permanentemente
+                        </DialogTitle>
+                        <DialogDescription className="space-y-3 pt-2">
+                            <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-600 text-sm font-medium">
+                                ⚠️ Esta acción es <strong>IRREVERSIBLE</strong>. Se eliminarán permanentemente:
+                            </div>
+                            <ul className="text-sm space-y-1 text-muted-foreground list-disc pl-4">
+                                <li>Todas las <strong>citas</strong> y sus servicios</li>
+                                <li>Todos los <strong>movimientos financieros</strong></li>
+                                <li>Todo el <strong>inventario</strong> y movimientos de stock</li>
+                                <li>Todas las <strong>novedades (daños)</strong></li>
+                                <li>Todas las <strong>sedes</strong>, categorías y servicios</li>
+                                <li>Las <strong>invitaciones</strong> y el <strong>registro de auditoría</strong></li>
+                            </ul>
+                            <p className="text-sm">
+                                Los usuarios serán desvinculados del negocio pero sus cuentas permanecerán.
+                            </p>
+                            <div className="pt-2">
+                                <Label className="text-sm">Escribe <strong className="text-red-600">{hardDeleteName}</strong> para confirmar:</Label>
+                                <Input
+                                    value={confirmName}
+                                    onChange={e => setConfirmName(e.target.value)}
+                                    placeholder={hardDeleteName}
+                                    className="mt-1 border-red-500/30 focus-visible:ring-red-500"
+                                />
+                            </div>
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setHardDeleteOpen(false)}>Cancelar</Button>
+                        <Button
+                            variant="destructive"
+                            onClick={handleHardDelete}
+                            disabled={confirmName !== hardDeleteName || deleting}
+                        >
+                            {deleting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                            {deleting ? 'Eliminando...' : 'Eliminar Permanentemente'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     )
 }
