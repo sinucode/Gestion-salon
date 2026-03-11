@@ -257,7 +257,7 @@ export default function POSPage() {
 
                             {hasServices && (
                                 <div className="space-y-2 pt-2 border-t border-border/50">
-                                    <Select value={selectedProf} onValueChange={setSelectedProf}>
+                                    <Select value={selectedProf} onValueChange={(v: string | null) => setSelectedProf(v || '')}>
                                         <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Asignar a..." /></SelectTrigger>
                                         <SelectContent>
                                             {professionals.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
@@ -269,7 +269,7 @@ export default function POSPage() {
 
                             {hasProducts && (
                                 <div className="space-y-2 pt-2 border-t border-border/50">
-                                    <Select value={selectedAccount} onValueChange={setSelectedAccount}>
+                                    <Select value={selectedAccount} onValueChange={(v: string | null) => setSelectedAccount(v || '')}>
                                         <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Cuenta de pago..." /></SelectTrigger>
                                         <SelectContent>
                                             {accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
