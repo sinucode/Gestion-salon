@@ -10,9 +10,45 @@ const ApproveSchema = z.object({
     appointmentId: z.string().uuid(),
 })
 
+const CheckoutSchema = z.object({
+    appointmentId: z.string().uuid(),
+    cashRegisterId: z.string().uuid(),
+    accountId: z.string().uuid(),
+    additionalProducts: z.array(z.object({
+        product_id: z.string().uuid(),
+        qty: z.number().positive(),
+        price: z.number().nonnegative()
+    }))
+})
+
 /**
- * Approve a completed appointment.
- * This triggers inventory deduction, income + commission cash movements.
+ * Process the full checkout flow for an appointment:
+ * Change status to 'approved', deduct inventory for additional products, 
+ * register professional commission and total income.
+ */
+export async function process_appointment_checkout(input: z.infer<typeof CheckoutSchema>) {
+    const data = CheckoutSchema.parse(input)
+    const supabase = await createClient()
+    const user = await requireRole(supabase, [ROLES.ADMIN, ROLES.SUPER_ADMIN])
+
+    const { error } = await supabase.rpc('checkout_appointment_tx', {
+        p_appointment_id: data.appointmentId,
+        p_approved_by: user.id,
+        p_cash_register_id: data.cashRegisterId,
+        p_account_id: data.accountId,
+        p_additional_products: JSON.stringify(data.additionalProducts)
+    })
+
+    if (error) throw new Error(error.message)
+
+    revalidatePath('/appointments')
+    revalidatePath('/inventory')
+    revalidatePath('/finance')
+    revalidatePath('/dashboard')
+}
+
+/**
+ * Approve a completed appointment (Manual approval for old flow).
  * Only admin/super_admin can approve.
  */
 export async function approveAppointment(input: z.infer<typeof ApproveSchema>) {
@@ -20,7 +56,7 @@ export async function approveAppointment(input: z.infer<typeof ApproveSchema>) {
     const supabase = await createClient()
     const user = await requireRole(supabase, [ROLES.ADMIN, ROLES.SUPER_ADMIN])
 
-    // Call the DB transaction function
+    // Call the DB transaction function (legacy)
     const { error } = await supabase.rpc('approve_appointment_tx', {
         p_appointment_id: data.appointmentId,
         p_approved_by: user.id,
