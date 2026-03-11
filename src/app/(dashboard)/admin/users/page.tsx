@@ -11,7 +11,9 @@ import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Separator } from '@/components/ui/separator'
+import { Checkbox } from '@/components/ui/checkbox'
 import { useAuthStore } from '@/stores'
+import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import {
     list_users_filtered,
@@ -26,7 +28,9 @@ const ROLE_LABELS: Record<string, string> = { super_admin: '🛡️ Super Admin'
 const ROLE_COLORS: Record<string, string> = { super_admin: 'bg-violet-500/10 text-violet-500', admin: 'bg-blue-500/10 text-blue-500', professional: 'bg-green-500/10 text-green-500', client: 'bg-gray-500/10 text-gray-400' }
 const ROLE_RANK: Record<string, number> = { super_admin: 4, admin: 3, professional: 2, client: 1 }
 
-const empty_form = { first_name: '', last_name: '', email: '', phone: '', document_id: '', role: 'client', is_active: true }
+interface LocationItem { id: string; name: string }
+
+const empty_form = { first_name: '', last_name: '', email: '', phone: '', document_id: '', role: 'client', is_active: true, location_id: '', assigned_locations: [] as string[] }
 
 export default function UsersPage() {
     const { user, selectedBusinessId } = useAuthStore()
@@ -43,6 +47,7 @@ export default function UsersPage() {
     const [editing_role, setEditingRole] = useState<string>('')
     const [saving, setSaving] = useState(false)
     const [form, setForm] = useState(empty_form)
+    const [locations, setLocations] = useState<LocationItem[]>([])
 
     // Credential fields
     const [new_email, setNewEmail] = useState('')
@@ -73,7 +78,14 @@ export default function UsersPage() {
         setLoading(false)
     }, [filter_business_id, can_manage_credentials])
 
-    useEffect(() => { setLoading(true); fetch_profiles() }, [fetch_profiles])
+    const fetch_locations = useCallback(async () => {
+        if (!filter_business_id) return
+        const supabase = createClient()
+        const { data } = await supabase.from('locations').select('id, name').eq('business_id', filter_business_id).eq('is_active', true)
+        if (data) setLocations(data)
+    }, [filter_business_id])
+
+    useEffect(() => { setLoading(true); fetch_profiles(); fetch_locations() }, [fetch_profiles, fetch_locations])
 
     const can_edit_target = (target_role: string): boolean => {
         const target_rank = ROLE_RANK[target_role] || 0
@@ -91,6 +103,8 @@ export default function UsersPage() {
             document_id: p.document_id || '',
             role: p.role,
             is_active: p.is_active,
+            location_id: p.location_id || '',
+            assigned_locations: p.assigned_locations || [],
         })
         setNewEmail('')
         setNewPassword('')
@@ -109,6 +123,8 @@ export default function UsersPage() {
             document_id: form.document_id || null,
             role: form.role,
             is_active: form.is_active,
+            location_id: form.location_id || null,
+            assigned_locations: form.assigned_locations || [],
         })
         if (result.error) { toast.error(result.error); setSaving(false); return }
         toast.success('Usuario actualizado')
@@ -169,6 +185,7 @@ export default function UsersPage() {
                                 <thead><tr className="border-b border-border/50">
                                     <th className="text-left py-3 px-4 text-muted-foreground font-medium">Nombre</th>
                                     {can_manage_credentials && <th className="text-left py-3 px-4 text-muted-foreground font-medium">Email (Login)</th>}
+                                    <th className="text-left py-3 px-4 text-muted-foreground font-medium">Sede Principal</th>
                                     <th className="text-left py-3 px-4 text-muted-foreground font-medium">Teléfono</th>
                                     <th className="text-left py-3 px-4 text-muted-foreground font-medium">Documento</th>
                                     <th className="text-center py-3 px-4 text-muted-foreground font-medium">Rol</th>
@@ -187,6 +204,7 @@ export default function UsersPage() {
                                                     </div>
                                                 </td>
                                             )}
+                                            <td className="py-3 px-4 text-muted-foreground">{p.location_name || '—'}</td>
                                             <td className="py-3 px-4 text-muted-foreground">{p.phone || '—'}</td>
                                             <td className="py-3 px-4 text-muted-foreground">{p.document_id || '—'}</td>
                                             <td className="py-3 px-4 text-center"><Badge className={`text-xs ${ROLE_COLORS[p.role] || ''}`}>{ROLE_LABELS[p.role] || p.role}</Badge></td>
@@ -238,6 +256,52 @@ export default function UsersPage() {
                                 </SelectContent>
                             </Select>
                         </div>
+                        
+                        {/* Section: Location Assignment */}
+                        {(form.role === 'professional' || form.role === 'admin') && (
+                            <div className="space-y-4 border rounded-lg p-4 bg-muted/10">
+                                <div>
+                                    <Label>Sede Principal</Label>
+                                    <Select value={form.location_id} onValueChange={(v) => setForm(f => ({ ...f, location_id: v || '' }))}>
+                                        <SelectTrigger><SelectValue placeholder="Seleccione una sede" /></SelectTrigger>
+                                        <SelectContent>
+                                            {locations.map(loc => (
+                                                <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    <p className="text-xs text-muted-foreground mt-1">Donde opera físicamente el usuario.</p>
+                                </div>
+
+                                {form.role === 'admin' && form.location_id && (
+                                    <div>
+                                        <Label className="mb-2 block">Zonas Adicionales (Administrador Multi-Sede)</Label>
+                                        <div className="grid grid-cols-2 gap-2 mt-2">
+                                            {locations.filter(loc => loc.id !== form.location_id).map(loc => {
+                                                const checked = form.assigned_locations.includes(loc.id)
+                                                return (
+                                                    <div key={loc.id} className="flex items-center space-x-2 border p-2 rounded-md">
+                                                        <Checkbox 
+                                                            id={`loc-${loc.id}`} 
+                                                            checked={checked}
+                                                            onCheckedChange={(c) => {
+                                                                if (c === true) {
+                                                                    setForm(f => ({ ...f, assigned_locations: [...f.assigned_locations, loc.id] }))
+                                                                } else {
+                                                                    setForm(f => ({ ...f, assigned_locations: f.assigned_locations.filter(id => id !== loc.id) }))
+                                                                }
+                                                            }}
+                                                        />
+                                                        <Label htmlFor={`loc-${loc.id}`} className="text-sm font-normal cursor-pointer leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">{loc.name}</Label>
+                                                    </div>
+                                                )
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
                         <div className="flex items-center gap-2"><Switch checked={form.is_active} onCheckedChange={v => setForm(f => ({ ...f, is_active: v }))} /><Label>Usuario activo</Label></div>
 
                         {/* Credential management section — only for admin+ editing lower-rank users */}

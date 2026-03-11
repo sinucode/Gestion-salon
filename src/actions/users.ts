@@ -30,6 +30,9 @@ export interface ProfileListRow {
     document_id: string | null
     is_active: boolean
     business_id: string | null
+    location_id: string | null
+    location_name?: string
+    assigned_locations?: string[]
 }
 
 /**
@@ -68,7 +71,7 @@ export async function list_users_filtered(
 
     let query = admin
         .from('profiles')
-        .select('id, first_name, last_name, role, phone, document_id, is_active, business_id')
+        .select('id, first_name, last_name, role, phone, document_id, is_active, business_id, location_id, assigned_locations, location:locations(name)')
         .in('role', target_roles)
         .order('first_name')
 
@@ -95,16 +98,22 @@ export async function list_users_filtered(
     // Append the caller's own profile at the top (always visible to self)
     const { data: self_profile } = await admin
         .from('profiles')
-        .select('id, first_name, last_name, role, phone, document_id, is_active, business_id')
+        .select('id, first_name, last_name, role, phone, document_id, is_active, business_id, location_id, assigned_locations, location:locations(name)')
         .eq('id', caller.id)
         .single()
 
-    const profiles = data as ProfileListRow[]
+    const profiles = (data as any[] || []).map(p => ({
+        ...p,
+        location_name: p.location?.name
+    })) as ProfileListRow[]
 
     // If the caller is not already in the list (e.g. admin not seeing other admins),
     // prepend them
     if (self_profile && !profiles.find(p => p.id === self_profile.id)) {
-        profiles.unshift(self_profile as ProfileListRow)
+        profiles.unshift({
+            ...self_profile,
+            location_name: (self_profile as any).location?.name
+        } as ProfileListRow)
     }
 
     return { data: profiles }
@@ -290,6 +299,8 @@ export async function admin_update_profile(
         document_id?: string | null
         role: string
         is_active: boolean
+        location_id?: string | null
+        assigned_locations?: string[]
     },
 ) {
     const supabase = await createClient()
@@ -334,6 +345,8 @@ export async function admin_update_profile(
             document_id: data.document_id || null,
             role: data.role,
             is_active: data.is_active,
+            location_id: data.location_id || null,
+            assigned_locations: data.assigned_locations || [],
         })
         .eq('id', target_user_id)
 
