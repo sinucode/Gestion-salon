@@ -17,7 +17,7 @@ import { toast } from 'sonner'
 import { open_cash_register, close_cash_register, transfer_funds, process_payout, create_expense, get_z_report_details } from '@/actions/finance'
 
 export default function FinanceERPPage() {
-    const { user, selectedBusinessId } = useAuthStore()
+    const { user, selectedBusinessId, timezone } = useAuthStore()
     const isSuperAdmin = user?.role === 'super_admin'
     const isAdmin = user?.role === 'admin'
     const filterBusinessId = isSuperAdmin ? selectedBusinessId : user?.business_id
@@ -65,6 +65,7 @@ export default function FinanceERPPage() {
 
     // Printing state
     const [receiptData, setReceiptData] = useState<any>(null)
+    const [isPrinting, setIsPrinting] = useState(false)
 
     const fetchData = async () => {
         if (!filterBusinessId) { setLoading(false); return }
@@ -112,7 +113,7 @@ export default function FinanceERPPage() {
         ] = await Promise.all([
             pnlQuery,
             supabase.from('accounts').select('*').eq('location_id', locFilter).eq('is_active', true),
-            supabase.from('cash_registers').select('*, opener:profiles!cash_registers_opened_by_fkey(first_name), closer:profiles!cash_registers_closed_by_fkey(first_name)').eq('location_id', locFilter).order('created_at', { ascending: false }).limit(20),
+            supabase.from('v_cash_registers_summary').select('*').eq('location_id', locFilter).order('opened_at', { ascending: false }).limit(20),
             supabase.from('v_professional_earnings').select('*, profile:profiles!v_professional_earnings_professional_id_fkey(first_name, last_name)').eq('location_id', locFilter),
             supabase.from('payouts').select('*, profile:profiles!payouts_professional_id_fkey(first_name)').eq('location_id', locFilter).order('created_at', { ascending: false }).limit(20),
             supabase.from('operating_expenses').select('*, creator:profiles!operating_expenses_created_by_fkey(first_name), account:accounts!operating_expenses_account_id_fkey(name)').eq('location_id', locFilter).order('created_at', { ascending: false }).limit(20),
@@ -357,8 +358,8 @@ export default function FinanceERPPage() {
                     <h3 className="text-center font-bold text-sm mb-1">AUDITORÍA DE CAJA</h3>
                     <h4 className="text-center text-xs mb-2">{receiptData.location}</h4>
                     <div className="border-t border-black py-1 mb-1 text-xs">
-                        <p><strong>Apertura:</strong> {receiptData.opened_at ? new Date(receiptData.opened_at).toLocaleString('es-CO') : '—'}</p>
-                        <p><strong>Cierre:</strong> {receiptData.closed_at ? new Date(receiptData.closed_at).toLocaleString('es-CO') : '—'}</p>
+                        <p><strong>Apertura:</strong> {receiptData.opened_at ? new Date(receiptData.opened_at).toLocaleString('es-CO', { timeZone: timezone }) : '—'}</p>
+                        <p><strong>Cierre:</strong> {receiptData.closed_at ? new Date(receiptData.closed_at).toLocaleString('es-CO', { timeZone: timezone }) : '—'}</p>
                         <p><strong>Cajero:</strong> {receiptData.opener_name}</p>
                         <p><strong>Responsable Cierre:</strong> {receiptData.closer_name}</p>
                     </div>
@@ -486,7 +487,7 @@ export default function FinanceERPPage() {
                                         const isIngreso = ['income', 'direct_sale', 'transfer_in', 'opening_balance', 'adjustment_in'].includes(m.type)
                                         return (
                                             <tr key={m.id} className="border-b border-border/20 hover:bg-muted/10 transition-colors">
-                                                <td className="py-3 px-4 text-xs font-mono">{new Date(m.created_at).toLocaleString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
+                                                <td className="py-3 px-4 text-xs font-mono">{new Date(m.created_at).toLocaleString('es-CO', { timeZone: timezone, day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
                                                 <td className="py-3 px-4 font-medium">{m.account?.name}</td>
                                                 <td className="py-3 px-4 text-muted-foreground">{m.description}</td>
                                                 <td className="py-3 px-4 text-xs italic">{m.creator?.first_name || 'Sistema'}</td>
@@ -580,26 +581,36 @@ export default function FinanceERPPage() {
                     <Card className="border-border/50 bg-card/80"><CardContent className="p-0 overflow-x-auto">
                         <table className="w-full text-sm">
                             <thead className="bg-muted/10 border-b border-border/50"><tr className="text-muted-foreground font-medium">
-                                <td className="py-3 px-4">Estado</td><td className="py-3 px-4">Fecha</td><td className="py-3 px-4 text-right">Base Apertura</td><td className="py-3 px-4 text-right">Cierre Real</td><td className="py-3 px-4">Responsable</td><td className="py-3 px-4 text-center">Reporte</td>
+                                <td className="py-3 px-4">Estado</td><td className="py-3 px-4">Apertura</td><td className="py-3 px-4">Cierre</td><td className="py-3 px-4 text-right">Ingresos (+)</td><td className="py-3 px-4 text-right">Gastos (-)</td><td className="py-3 px-4 text-right font-bold">Total Caja</td><td className="py-3 px-4 text-center">Acciones</td>
                             </tr></thead>
                             <tbody>
                                 {registers.map(r => (
                                     <tr key={r.id} className="border-b border-border/20">
                                         <td className="py-3 px-4"><Badge variant={r.status==='open'?'default':'secondary'}>{r.status}</Badge></td>
-                                        <td className="py-3 px-4">{new Date(r.opened_at).toLocaleDateString()}</td>
-                                        <td className="py-3 px-4 text-right font-medium">{format_currency(r.base_amount)}</td>
-                                        <td className="py-3 px-4 text-right">{r.status==='closed' ? format_currency(r.final_amount) : 'Caja en Progreso'}</td>
-                                        <td className="py-3 px-4 text-muted-foreground">{r.opener?.first_name}</td>
+                                        <td className="py-3 px-4 text-xs">{new Date(r.opened_at).toLocaleString('es-CO', { timeZone: timezone, dateStyle: 'short', timeStyle: 'short' })}<br/><span className="text-muted-foreground">{r.opener_first_name}</span></td>
+                                        <td className="py-3 px-4 text-xs">{r.status==='closed' ? new Date(r.closed_at).toLocaleString('es-CO', { timeZone: timezone, dateStyle: 'short', timeStyle: 'short' }) : 'En Progreso'}<br/><span className="text-muted-foreground">{r.status==='closed' ? r.closer_first_name : ''}</span></td>
+                                        <td className="py-3 px-4 text-right font-medium text-green-500">+{format_currency(r.total_incomes)}</td>
+                                        <td className="py-3 px-4 text-right font-medium text-red-500">-{format_currency(r.total_outcomes)}</td>
+                                        <td className="py-3 px-4 text-right font-bold">{format_currency(r.net_cash || r.final_amount || 0)}</td>
                                         <td className="py-3 px-4 text-center">
                                             {r.status === 'closed' && (
-                                                <Button variant="ghost" size="sm" onClick={async () => {
+                                                <Button variant="ghost" size="sm" disabled={isPrinting} onClick={async () => {
+                                                    setIsPrinting(true)
                                                     try {
                                                         const zData = await get_z_report_details(r.id)
                                                         const locName = locationsList.find(l => l.id === activeLocId)?.name || 'Sede'
                                                         setReceiptData({ type: 'z_report', location: locName, ...zData })
-                                                        setTimeout(() => window.print(), 500)
-                                                    } catch(e: any) { toast.error(e.message) }
-                                                }}><Printer className="w-4 h-4" /></Button>
+                                                        setTimeout(() => {
+                                                            window.print()
+                                                            setTimeout(() => setIsPrinting(false), 1500)
+                                                        }, 500)
+                                                    } catch(e: any) { 
+                                                        toast.error(e.message)
+                                                        setIsPrinting(false)
+                                                    }
+                                                }}>
+                                                    {isPrinting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />}
+                                                </Button>
                                             )}
                                         </td>
                                     </tr>
@@ -681,6 +692,10 @@ export default function FinanceERPPage() {
                 <DialogContent className="max-w-2xl">
                     <DialogHeader><DialogTitle className="flex items-center gap-2 text-red-500"><Lock className="w-5 h-5" /> Arqueo Final – Reporte Z</DialogTitle></DialogHeader>
                     <div className="py-4 space-y-4">
+                        <div className="bg-red-500/10 border border-red-500/30 p-3 rounded-md text-xs text-red-500 mb-2 font-mono">
+                            <p><strong>Hora de Apertura:</strong> {activeRegId ? new Date(registers.find(r => r.id === activeRegId)?.opened_at || Date.now()).toLocaleString('es-CO', { timeZone: timezone }) : ''}</p>
+                            <p><strong>Hora de Cierre Estimada:</strong> {new Date().toLocaleString('es-CO', { timeZone: timezone })}</p>
+                        </div>
                         <div className="bg-red-500/10 border border-red-500/30 p-3 rounded-md text-xs text-red-500 mb-2">Al sellar la caja, todos los movimientos del turno quedarán bloqueados. Verifica cada saldo físico.</div>
                         <div className="border border-border/50 rounded-lg overflow-hidden">
                             <table className="w-full text-sm">
