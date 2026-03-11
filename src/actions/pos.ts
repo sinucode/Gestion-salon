@@ -40,16 +40,20 @@ export async function process_direct_sale(input: {
     // 2. Reduce Stock
     for (const item of input.items) {
         // Find product
-        const { data: prod } = await supabase.from('products').select('stock_qty, name').eq('id', item.product_id).single()
+        const { data: prod } = await supabase.from('products').select('stock_qty, name, cost_per_unit').eq('id', item.product_id).single()
         if (prod) {
+            const { data: { user } } = await supabase.auth.getUser()
+            
             // Un stock movement
             await supabase.from('stock_movements').insert({
                 business_id: input.business_id,
                 location_id: input.location_id,
                 product_id: item.product_id,
                 type: 'consumption',
-                qty_change: -item.qty,
-                reason: `Venta Directa POS (Ref: ${mov.id})`
+                qty: item.qty,
+                cost_total: prod.cost_per_unit ? prod.cost_per_unit * item.qty : 0,
+                notes: `Venta Directa POS (Ref: ${mov.id})`,
+                created_by: user!.id
             })
             // Actualizar stock master
             await supabase.from('products').update({

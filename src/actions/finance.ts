@@ -162,3 +162,51 @@ export async function process_payout(input: {
     revalidatePath('/finance')
     return { success: true }
 }
+
+// ============================================
+// OPERATING EXPENSES (Gastos Operativos)
+// ============================================
+export async function create_expense(input: {
+    business_id: string;
+    location_id: string;
+    account_id: string;
+    cash_register_id: string;
+    category: string;
+    amount: number;
+    description: string;
+}) {
+    const supabase = await createClient()
+    await requireRole(supabase, [ROLES.SUPER_ADMIN, ROLES.ADMIN])
+    const { data: { user } } = await supabase.auth.getUser()
+
+    // 1. Create cash movement
+    const { data: movement, error: movError } = await supabase.from('cash_movements').insert({
+        business_id: input.business_id,
+        location_id: input.location_id,
+        account_id: input.account_id,
+        cash_register_id: input.cash_register_id,
+        type: 'expense',
+        amount: input.amount,
+        description: `Gasto Operativo: ${input.category} - ${input.description}`
+    }).select().single()
+
+    if (movError) throw new Error(movError.message)
+
+    // 2. Insert into operating_expenses
+    const { error: expError } = await supabase.from('operating_expenses').insert({
+        business_id: input.business_id,
+        location_id: input.location_id,
+        account_id: input.account_id,
+        cash_register_id: input.cash_register_id,
+        category: input.category,
+        amount: input.amount,
+        description: input.description,
+        cash_movement_id: movement.id,
+        created_by: user!.id
+    })
+
+    if (expError) throw new Error(expError.message)
+
+    revalidatePath('/finance')
+    return { success: true }
+}

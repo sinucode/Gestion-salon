@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { DollarSign, Loader2, TrendingUp, TrendingDown, Wallet, ArrowRightLeft, Lock, Unlock, Banknote } from 'lucide-react'
+import { DollarSign, Loader2, TrendingUp, TrendingDown, Wallet, ArrowRightLeft, Lock, Unlock, Banknote, FileText, Printer } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -14,16 +14,25 @@ import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/stores'
 import { format_currency } from '@/lib/utils/currency'
 import { toast } from 'sonner'
-import { open_cash_register, close_cash_register, transfer_funds, process_payout } from '@/actions/finance'
+import { open_cash_register, close_cash_register, transfer_funds, process_payout, create_expense } from '@/actions/finance'
 
 export default function FinanceERPPage() {
     const { user, selectedBusinessId } = useAuthStore()
     const isSuperAdmin = user?.role === 'super_admin'
+    const isAdmin = user?.role === 'admin'
     const filterBusinessId = isSuperAdmin ? selectedBusinessId : user?.business_id
-    const filterLocationId = user?.location_id
+    const defaultLocationId = user?.location_id
 
     const [loading, setLoading] = useState(true)
     const [activeTab, setActiveTab] = useState('pnl')
+
+    // Filters for P&L
+    const defaultStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]
+    const defaultEnd = new Date().toISOString().split('T')[0]
+    const [startDate, setStartDate] = useState(defaultStart)
+    const [endDate, setEndDate] = useState(defaultEnd)
+    const [selectedLocation, setSelectedLocation] = useState<string>('')
+    const [locationsList, setLocationsList] = useState<any[]>([])
 
     // Data states
     const [pnl, setPnl] = useState<any[]>([])
@@ -31,48 +40,67 @@ export default function FinanceERPPage() {
     const [registers, setRegisters] = useState<any[]>([])
     const [professionals, setProfessionals] = useState<any[]>([])
     const [payouts, setPayouts] = useState<any[]>([])
+    const [expenses, setExpenses] = useState<any[]>([])
 
     // Dialog states
     const [openTransfer, setOpenTransfer] = useState(false)
     const [openRegister, setOpenRegister] = useState(false)
     const [openCloseReg, setOpenCloseReg] = useState(false)
     const [openPayout, setOpenPayout] = useState(false)
+    const [openExpense, setOpenExpense] = useState(false)
 
     // Form states
     const [formTransfer, setFormTransfer] = useState({ from: '', to: '', amount: 0, desc: '' })
     const [formBase, setFormBase] = useState(0)
     const [formClose, setFormClose] = useState({ amount: 0, notes: '' })
     const [formPayout, setFormPayout] = useState({ prof_id: '', account_id: '', amount: 0 })
+    const [formExpense, setFormExpense] = useState({ category: '', account_id: '', amount: 0, description: '' })
 
     const [activeRegId, setActiveRegId] = useState<string | null>(null)
     const [activeLocId, setActiveLocId] = useState<string | null>(null)
+
+    // Printing state
+    const [receiptData, setReceiptData] = useState<any>(null)
 
     const fetchData = async () => {
         if (!filterBusinessId) { setLoading(false); return }
         const supabase = createClient()
         
-        let locFilter = filterLocationId
-        if (isSuperAdmin && !locFilter) {
-            // Pick first location of business for demo if superadmin has none
-            const { data: locs } = await supabase.from('locations').select('id').eq('business_id', filterBusinessId).limit(1)
-            if (locs?.length) locFilter = locs[0].id
+        let locFilter = selectedLocation || defaultLocationId
+        
+        // Fetch locations list for superadmin/admin if not loaded
+        if ((isSuperAdmin || isAdmin) && locationsList.length === 0) {
+            const { data: locs } = await supabase.from('locations').select('id, name').eq('business_id', filterBusinessId)
+            if (locs) {
+                setLocationsList(locs)
+                if (!locFilter && locs.length > 0) locFilter = locs[0].id
+                if (!selectedLocation && locFilter) setSelectedLocation(locFilter)
+            }
         }
 
         if (!locFilter) { setLoading(false); return }
         setActiveLocId(locFilter)
+
+        // Date range filtering for P&L
+        let pnlQuery = supabase.from('v_pnl').select('*').eq('business_id', filterBusinessId)
+        if (locFilter) pnlQuery = pnlQuery.eq('location_id', locFilter)
+        if (startDate) pnlQuery = pnlQuery.gte('date', startDate)
+        if (endDate) pnlQuery = pnlQuery.lte('date', endDate)
 
         const [
             { data: resPnl },
             { data: resAcc },
             { data: resReg },
             { data: resProf },
-            { data: resPay }
+            { data: resPay },
+            { data: resExp }
         ] = await Promise.all([
-            supabase.from('v_pnl').select('*').eq('business_id', filterBusinessId).limit(30),
+            pnlQuery,
             supabase.from('accounts').select('*').eq('location_id', locFilter),
             supabase.from('cash_registers').select('*, opener:profiles!cash_registers_opened_by_fkey(first_name), closer:profiles!cash_registers_closed_by_fkey(first_name)').eq('location_id', locFilter).order('created_at', { ascending: false }).limit(20),
             supabase.from('v_professional_earnings').select('*, profile:profiles!v_professional_earnings_professional_id_fkey(first_name, last_name)').eq('location_id', locFilter),
-            supabase.from('payouts').select('*, profile:profiles!payouts_professional_id_fkey(first_name)').eq('location_id', locFilter).order('created_at', { ascending: false }).limit(20)
+            supabase.from('payouts').select('*, profile:profiles!payouts_professional_id_fkey(first_name)').eq('location_id', locFilter).order('created_at', { ascending: false }).limit(20),
+            supabase.from('operating_expenses').select('*, creator:profiles!operating_expenses_created_by_fkey(first_name), account:accounts!operating_expenses_account_id_fkey(name)').eq('location_id', locFilter).order('created_at', { ascending: false }).limit(20)
         ])
 
         if (resPnl) setPnl(resPnl)
@@ -84,11 +112,12 @@ export default function FinanceERPPage() {
         }
         if (resProf) setProfessionals(resProf)
         if (resPay) setPayouts(resPay)
+        if (resExp) setExpenses(resExp)
 
         setLoading(false)
     }
 
-    useEffect(() => { setLoading(true); fetchData() }, [filterBusinessId])
+    useEffect(() => { setLoading(true); fetchData() }, [filterBusinessId, startDate, endDate, selectedLocation])
 
     const handleTransfer = async () => {
         if (!activeRegId || !activeLocId) return toast.error('Debes abrir caja para transferir.')
@@ -136,6 +165,39 @@ export default function FinanceERPPage() {
             })
             toast.success('Liquidación Pagada')
             setOpenPayout(false)
+            
+            // Print receipt logic
+            const prof = professionals.find(p => p.professional_id === formPayout.prof_id)
+            const locName = locationsList.find(l => l.id === activeLocId)?.name || 'Sede Principal'
+            setReceiptData({
+                type: 'payout',
+                date: new Date().toISOString(),
+                location: locName,
+                professional: prof ? `${prof.profile.first_name} ${prof.profile.last_name || ''}` : 'Profesional',
+                amount: formPayout.amount,
+                balance: (prof ? prof.net_earnings : 0) - formPayout.amount
+            })
+            setTimeout(() => window.print(), 500)
+
+            fetchData()
+        } catch(e:any) { toast.error(e.message) }
+    }
+
+    const handleExpense = async () => {
+        if (!activeRegId || !activeLocId) return toast.error('Caja cerrada.')
+        if (!formExpense.category || !formExpense.account_id || !formExpense.amount) return toast.error('Completa los campos obligatorios.')
+        try {
+            await create_expense({
+                business_id: filterBusinessId!, location_id: activeLocId,
+                cash_register_id: activeRegId,
+                category: formExpense.category,
+                account_id: formExpense.account_id,
+                amount: formExpense.amount,
+                description: formExpense.description
+            })
+            toast.success('Gasto registrado con éxito')
+            setOpenExpense(false)
+            setFormExpense({ category: '', account_id: '', amount: 0, description: '' })
             fetchData()
         } catch(e:any) { toast.error(e.message) }
     }
@@ -146,9 +208,14 @@ export default function FinanceERPPage() {
         <Card className="border-yellow-500/30 bg-yellow-500/5"><CardContent className="py-4 text-center text-yellow-400">Selecciona un negocio para ver el ERP.</CardContent></Card>
     )
 
+    // Unauthorized for non-admins (Double Check)
+    if (!isSuperAdmin && !isAdmin) return (
+        <Card className="border-red-500/30 bg-red-500/5"><CardContent className="py-4 text-center text-red-500">Acceso denegado al módulo financiero. Sólo administradores.</CardContent></Card>
+    )
+
     return (
         <div className="space-y-6">
-            <div className="flex justify-between items-center pr-4">
+            <div className="flex justify-between items-center pr-4 hide-on-print">
                 <div><h1 className="text-2xl font-bold tracking-tight">ERP Financiero</h1><p className="text-muted-foreground text-sm">Control Operativo y Contable (Doble Partida)</p></div>
                 {activeRegId ? (
                     <Badge variant="outline" className="border-green-500 text-green-500 bg-green-500/10 px-3 py-1 flex items-center gap-2"><Unlock className="w-4 h-4" /> Caja Abierta</Badge>
@@ -157,28 +224,90 @@ export default function FinanceERPPage() {
                 )}
             </div>
 
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                <TabsList className="grid grid-cols-4 bg-muted/30">
+            {receiptData && receiptData.type === 'payout' && (
+                <div className="hidden print:block text-black print-container font-mono text-sm leading-tight p-2 w-[80mm] mx-auto absolute top-0 left-0 bg-white">
+                    <h2 className="text-center font-bold text-lg mb-2">COMPROBANTE DE PAGO</h2>
+                    <h3 className="text-center text-md mb-2">{receiptData.location}</h3>
+                    <p className="text-center text-xs mb-4">{new Date(receiptData.date).toLocaleString('es-CO')}</p>
+                    
+                    <div className="border-t border-b border-black py-2 mb-4">
+                        <p><strong>Recibe:</strong> {receiptData.professional}</p>
+                        <p><strong>Concepto:</strong> Liquidación Comercial</p>
+                    </div>
+                    
+                    <div className="flex justify-between items-center font-bold text-lg mb-4">
+                        <span>VALOR PAGADO:</span>
+                        <span>{format_currency(receiptData.amount)}</span>
+                    </div>
+                    
+                    <div className="flex justify-between items-center text-xs text-gray-600 mb-8">
+                        <span>Saldo Pendiente:</span>
+                        <span>{format_currency(receiptData.balance)}</span>
+                    </div>
+
+                    <div className="mt-12 border-t border-black pt-2 text-center">
+                        <p className="text-xs mb-8">.....................................................</p>
+                        <p className="text-xs font-bold">Firma del Profesional</p>
+                        <p className="text-[10px] mt-2 text-gray-500">Documento de constancia de egreso operativo</p>
+                    </div>
+                </div>
+            )}
+
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full hide-on-print">
+                <TabsList className="grid grid-cols-5 bg-muted/30">
                     <TabsTrigger value="pnl">PyG Gerencial</TabsTrigger>
                     <TabsTrigger value="accounts">Suma Cero & Cuentas</TabsTrigger>
+                    <TabsTrigger value="expenses">Gastos Op.</TabsTrigger>
                     <TabsTrigger value="payouts">Liquidaciones</TabsTrigger>
                     <TabsTrigger value="registers">Cierres de Caja</TabsTrigger>
                 </TabsList>
 
                 {/* ===== P&L ===== */}
                 <TabsContent value="pnl" className="space-y-4 pt-4">
-                    <div className="grid grid-cols-3 gap-4">
+                    <div className="flex flex-col sm:flex-row gap-4 items-end bg-muted/20 p-4 rounded-lg border border-border/50">
+                        <div className="grid gap-1.5 flex-1">
+                            <Label>Desde</Label>
+                            <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
+                        </div>
+                        <div className="grid gap-1.5 flex-1">
+                            <Label>Hasta</Label>
+                            <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
+                        </div>
+                        {(isSuperAdmin || isAdmin) && locationsList.length > 0 && (
+                            <div className="grid gap-1.5 flex-1">
+                                <Label>Reporte de Sede</Label>
+                                <Select value={selectedLocation} onValueChange={(v: string | null) => setSelectedLocation(v || '')}>
+                                    <SelectTrigger><SelectValue placeholder="Todas" /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">Consolidado Global</SelectItem>
+                                        {locationsList.map(l => <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        )}
+                        <Button variant="outline" onClick={() => fetchData()}>Filtrar</Button>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                         <Card className="border-border/50 bg-card/80 backdrop-blur-sm">
-                            <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Ingresos (Ventas/Citas)</CardTitle></CardHeader>
-                            <CardContent><div className="text-2xl font-bold text-green-500 flex items-center gap-2"><TrendingUp className="w-5 h-5" />{format_currency(pnl.reduce((a,c)=>a+c.gross_income,0))}</div></CardContent>
+                            <CardHeader className="pb-2"><CardTitle className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Ingresos Brutos</CardTitle></CardHeader>
+                            <CardContent><div className="text-2xl font-bold flex items-center gap-2"><TrendingUp className="w-5 h-5 text-green-500" />{format_currency(pnl.reduce((a,c)=>a+(c.gross_income || 0),0))}</div>
+                            <p className="text-xs text-muted-foreground mt-1">Ventas Libres + Citas</p></CardContent>
                         </Card>
                         <Card className="border-border/50 bg-card/80 backdrop-blur-sm">
-                            <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Costos (Inv + Comisiones)</CardTitle></CardHeader>
-                            <CardContent><div className="text-2xl font-bold text-red-500 flex items-center gap-2"><TrendingDown className="w-5 h-5" />{format_currency(pnl.reduce((a,c)=>a+c.inventory_cost+c.commissions,0))}</div></CardContent>
+                            <CardHeader className="pb-2"><CardTitle className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Costos de Venta</CardTitle></CardHeader>
+                            <CardContent><div className="text-2xl font-bold flex items-center gap-2"><TrendingDown className="w-5 h-5 text-red-400" />{format_currency(pnl.reduce((a,c)=>a+(c.cost_of_sales || 0),0))}</div>
+                            <p className="text-xs text-muted-foreground mt-1">Inv. Consumido + Comisiones</p></CardContent>
                         </Card>
                         <Card className="border-border/50 bg-card/80 backdrop-blur-sm">
-                            <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Utilidad Bruta (Net Profit)</CardTitle></CardHeader>
-                            <CardContent><div className="text-2xl font-bold text-brand">{format_currency(pnl.reduce((a,c)=>a+c.net_profit,0))}</div></CardContent>
+                            <CardHeader className="pb-2"><CardTitle className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Utilidad Bruta</CardTitle></CardHeader>
+                            <CardContent><div className="text-2xl font-bold flex items-center gap-2"><Wallet className="w-5 h-5 text-brand" />{format_currency(pnl.reduce((a,c)=>a+(c.gross_profit || 0),0))}</div>
+                            <p className="text-xs text-muted-foreground mt-1">Ingresos - Costos Venta</p></CardContent>
+                        </Card>
+                        <Card className="border-border/50 bg-gradient-to-br from-card to-muted bg-card/80 backdrop-blur-sm shadow-sm ring-1 ring-brand/20">
+                            <CardHeader className="pb-2"><CardTitle className="text-xs font-bold text-brand uppercase tracking-wider">Utilidad Neta Operativa</CardTitle></CardHeader>
+                            <CardContent><div className="text-2xl font-bold flex items-center gap-2 text-brand"><Banknote className="w-5 h-5" />{format_currency(pnl.reduce((a,c)=>a+(c.net_operating_profit || 0),0))}</div>
+                            <p className="text-xs text-muted-foreground mt-1">Restando Gastos Operativos</p></CardContent>
                         </Card>
                     </div>
                 </TabsContent>
@@ -198,6 +327,32 @@ export default function FinanceERPPage() {
                             </Card>
                         ))}
                     </div>
+                </TabsContent>
+
+                {/* ===== EXPENSES ===== */}
+                <TabsContent value="expenses" className="space-y-4 pt-4">
+                    <div className="flex justify-between items-center">
+                        <h3 className="font-semibold text-lg flex items-center gap-2"><FileText className="w-5 h-5" /> Registro de Egresos</h3>
+                        <Button variant="destructive" disabled={!activeRegId} onClick={() => setOpenExpense(true)}><TrendingDown className="w-4 h-4 mr-2" /> Registrar Gasto Operativo</Button>
+                    </div>
+                    <Card className="border-border/50 bg-card/80"><CardContent className="p-0">
+                        <table className="w-full text-sm">
+                            <thead className="border-b border-border/50"><tr className="text-muted-foreground font-medium">
+                                <td className="py-3 px-4">Fecha</td><td className="py-3 px-4">Categoría</td><td className="py-3 px-4">Descripción</td><td className="py-3 px-4">Cuenta Base</td><td className="py-3 px-4 text-right">Monto</td>
+                            </tr></thead>
+                            <tbody>
+                                {expenses.map(e => (
+                                    <tr key={e.id} className="border-b border-border/20">
+                                        <td className="py-3 px-4">{new Date(e.created_at).toLocaleDateString('es-CO')}</td>
+                                        <td className="py-3 px-4"><Badge variant="outline">{e.category}</Badge></td>
+                                        <td className="py-3 px-4 text-muted-foreground">{e.description}</td>
+                                        <td className="py-3 px-4">{e.account?.name}</td>
+                                        <td className="py-3 px-4 text-right text-red-500 font-bold">{format_currency(e.amount)}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </CardContent></Card>
                 </TabsContent>
 
                 {/* ===== PAYOUTS ===== */}
@@ -267,6 +422,22 @@ export default function FinanceERPPage() {
                 <DialogFooter><Button onClick={handleTransfer} disabled={!formTransfer.from || !formTransfer.to || !formTransfer.amount}>Ejecutar Suma Cero</Button></DialogFooter></DialogContent>
             </Dialog>
 
+            <Dialog open={openExpense} onOpenChange={setOpenExpense}>
+                <DialogContent><DialogHeader><DialogTitle>Registrar Gasto Operativo</DialogTitle></DialogHeader>
+                    <div className="grid gap-4 py-4">
+                        <div><Label>Categoría de Gasto</Label>
+                            <Select value={formExpense.category} onValueChange={(v: string | null)=>setFormExpense(f=>({...f,category:v || ''}))}>
+                                <SelectTrigger><SelectValue placeholder="Ej: Fijo" /></SelectTrigger>
+                                <SelectContent><SelectItem value="Fijo">Fijo (Arriendo, Nómina, Suscripciones)</SelectItem><SelectItem value="Variable">Variable (Servicios P., Insumos Aseo)</SelectItem></SelectContent>
+                            </Select>
+                        </div>
+                        <div><Label>Sustraer Dinero De:</Label><Select value={formExpense.account_id} onValueChange={(v: string | null)=>setFormExpense(f=>({...f,account_id:v || ''}))}><SelectTrigger><SelectValue placeholder="Selecciona Cuenta" /></SelectTrigger><SelectContent>{accounts.map(a=><SelectItem key={a.id} value={a.id}>{a.name} ({format_currency(a.balance)})</SelectItem>)}</SelectContent></Select></div>
+                        <div><Label>Monto del Gasto</Label><Input type="number" value={formExpense.amount} onChange={e=>setFormExpense(f=>({...f,amount:Number(e.target.value)}))} /></div>
+                        <div><Label>Descripción Breve</Label><Input value={formExpense.description} onChange={e=>setFormExpense(f=>({...f,description:e.target.value}))} /></div>
+                    </div>
+                <DialogFooter><Button variant="destructive" onClick={handleExpense} disabled={!formExpense.category || !formExpense.account_id || !formExpense.amount}>Restar y Guardar</Button></DialogFooter></DialogContent>
+            </Dialog>
+
             <Dialog open={openRegister} onOpenChange={setOpenRegister}>
                 <DialogContent><DialogHeader><DialogTitle>Apertura de Caja (Día)</DialogTitle></DialogHeader>
                     <div className="grid gap-4 py-4">
@@ -290,12 +461,21 @@ export default function FinanceERPPage() {
             <Dialog open={openPayout} onOpenChange={setOpenPayout}>
                 <DialogContent><DialogHeader><DialogTitle>Liquidación a Demanda (Payout)</DialogTitle></DialogHeader>
                     <div className="grid gap-4 py-4">
-                        <div><Label>Profesional</Label><Select value={formPayout.prof_id} onValueChange={(v: string | null)=>setFormPayout(f=>({...f,prof_id:v || ''}))}><SelectTrigger><SelectValue placeholder="Elegir profesional" /></SelectTrigger><SelectContent>{professionals.map(p=><SelectItem key={p.professional_id} value={p.professional_id}>{p.profile?.first_name} {p.profile?.last_name} ({format_currency(p.commission_earned - p.damage_deducted)})</SelectItem>)}</SelectContent></Select></div>
+                        <div><Label>Profesional</Label><Select value={formPayout.prof_id} onValueChange={(v: string | null)=>setFormPayout(f=>({...f,prof_id:v || ''}))}><SelectTrigger><SelectValue placeholder="Elegir profesional" /></SelectTrigger><SelectContent>{professionals.map(p=><SelectItem key={p.professional_id} value={p.professional_id}>{p.profile?.first_name} {p.profile?.last_name} ({format_currency((p.net_earnings || 0))})</SelectItem>)}</SelectContent></Select></div>
                         <div><Label>Descontar de la cuenta:</Label><Select value={formPayout.account_id} onValueChange={(v: string | null)=>setFormPayout(f=>({...f,account_id:v || ''}))}><SelectTrigger><SelectValue placeholder="Cuenta de donde sale el dinero" /></SelectTrigger><SelectContent>{accounts.map(a=><SelectItem key={a.id} value={a.id}>{a.name} ({format_currency(a.balance)})</SelectItem>)}</SelectContent></Select></div>
                         <div><Label>Monto a Liquidar</Label><Input type="number" value={formPayout.amount} onChange={e=>setFormPayout(f=>({...f,amount:Number(e.target.value)}))} /></div>
                     </div>
                 <DialogFooter><Button onClick={handlePayout} disabled={!formPayout.prof_id || !formPayout.account_id || !formPayout.amount}>Procesar Salida y Generar Tirilla</Button></DialogFooter></DialogContent>
             </Dialog>
+
+            {/* Global style for printing thermal receipts */}
+            <style dangerouslySetInnerHTML={{ __html: `
+                @media print {
+                    .hide-on-print { display: none !important; }
+                    body { background: white !important; padding: 0 !important; margin: 0 !important; }
+                    .print-container { width: 80mm; padding: 0; position: absolute; left: 0; top: 0; margin: 0; }
+                }
+            `}} />
         </div>
     )
 }
