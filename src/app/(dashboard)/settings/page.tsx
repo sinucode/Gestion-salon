@@ -25,6 +25,7 @@ import {
 export default function SettingsPage() {
     const { user, setUser } = useAuthStore()
     const { theme, setTheme } = useTheme()
+    const [mounted, setMounted] = useState(false)
     const [isProfilePending, setIsProfilePending] = useState(false)
     const [isPasswordPending, setIsPasswordPending] = useState(false)
 
@@ -41,6 +42,7 @@ export default function SettingsPage() {
 
     // Populate profile form when user data loads
     useEffect(() => {
+        setMounted(true)
         if (user) {
             profileForm.reset({
                 first_name: user.first_name || '',
@@ -286,32 +288,36 @@ export default function SettingsPage() {
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
-                        <div className="flex items-center gap-4">
-                            <Button
-                                variant={theme === 'light' ? 'default' : 'outline'}
-                                onClick={() => setTheme('light')}
-                                className="w-full gap-2"
-                            >
-                                <Sun className="w-4 h-4" />
-                                Claro
-                            </Button>
-                            <Button
-                                variant={theme === 'dark' ? 'default' : 'outline'}
-                                onClick={() => setTheme('dark')}
-                                className="w-full gap-2"
-                            >
-                                <Moon className="w-4 h-4" />
-                                Oscuro
-                            </Button>
-                            <Button
-                                variant={theme === 'system' ? 'default' : 'outline'}
-                                onClick={() => setTheme('system')}
-                                className="w-full gap-2"
-                            >
-                                <Monitor className="w-4 h-4" />
-                                Sistema
-                            </Button>
-                        </div>
+                        {!mounted ? (
+                            <div className="h-11 w-full bg-muted/50 rounded-lg animate-pulse" />
+                        ) : (
+                            <div className="flex items-center gap-4">
+                                <Button
+                                    variant={theme === 'light' ? 'default' : 'outline'}
+                                    onClick={() => setTheme('light')}
+                                    className="w-full gap-2"
+                                >
+                                    <Sun className="w-4 h-4" />
+                                    Claro
+                                </Button>
+                                <Button
+                                    variant={theme === 'dark' ? 'default' : 'outline'}
+                                    onClick={() => setTheme('dark')}
+                                    className="w-full gap-2"
+                                >
+                                    <Moon className="w-4 h-4" />
+                                    Oscuro
+                                </Button>
+                                <Button
+                                    variant={theme === 'system' ? 'default' : 'outline'}
+                                    onClick={() => setTheme('system')}
+                                    className="w-full gap-2"
+                                >
+                                    <Monitor className="w-4 h-4" />
+                                    Sistema
+                                </Button>
+                            </div>
+                        )}
                     </CardContent>
                 </Card>
             </div>
