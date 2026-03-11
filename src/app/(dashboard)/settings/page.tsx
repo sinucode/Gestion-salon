@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { User, Lock, Save, Loader2 } from 'lucide-react'
+import { User, Lock, Save, Loader2, Sun, Moon, Monitor } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { ProfileUpdateSchema, PasswordUpdateSchema } from '@/lib/utils/validators'
@@ -12,6 +12,7 @@ import { updateProfileInfo, updateAccountPassword } from '@/actions/settings'
 import { useAuthStore } from '@/stores'
 import { toast } from 'sonner'
 import * as z from 'zod'
+import { useTheme } from 'next-themes'
 import {
     Form,
     FormControl,
@@ -23,6 +24,7 @@ import {
 
 export default function SettingsPage() {
     const { user, setUser } = useAuthStore()
+    const { theme, setTheme } = useTheme()
     const [isProfilePending, setIsProfilePending] = useState(false)
     const [isPasswordPending, setIsPasswordPending] = useState(false)
 
@@ -269,6 +271,47 @@ export default function SettingsPage() {
                                 </div>
                             </form>
                         </Form>
+                    </CardContent>
+                </Card>
+
+                {/* Appearance Card */}
+                <Card className="border-border/50 bg-card/80 backdrop-blur-sm md:col-span-2">
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2 text-lg">
+                            <Monitor className="w-5 h-5 text-brand" />
+                            Apariencia
+                        </CardTitle>
+                        <CardDescription>
+                            Personaliza el tema visual de la aplicación.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="flex items-center gap-4">
+                            <Button
+                                variant={theme === 'light' ? 'default' : 'outline'}
+                                onClick={() => setTheme('light')}
+                                className="w-full gap-2"
+                            >
+                                <Sun className="w-4 h-4" />
+                                Claro
+                            </Button>
+                            <Button
+                                variant={theme === 'dark' ? 'default' : 'outline'}
+                                onClick={() => setTheme('dark')}
+                                className="w-full gap-2"
+                            >
+                                <Moon className="w-4 h-4" />
+                                Oscuro
+                            </Button>
+                            <Button
+                                variant={theme === 'system' ? 'default' : 'outline'}
+                                onClick={() => setTheme('system')}
+                                className="w-full gap-2"
+                            >
+                                <Monitor className="w-4 h-4" />
+                                Sistema
+                            </Button>
+                        </div>
                     </CardContent>
                 </Card>
             </div>
