@@ -486,6 +486,7 @@ export default function FinanceERPPage() {
                             <table className="w-full text-sm">
                                 <thead className="bg-muted/30"><tr className="text-muted-foreground font-medium border-b border-border/50">
                                     <th className="py-3 px-4 text-left">Fecha/Hora</th>
+                                    <th className="py-3 px-4 text-left">Sede</th>
                                     <th className="py-3 px-4 text-left">Cuenta</th>
                                     <th className="py-3 px-4 text-left">Concepto</th>
                                     <th className="py-3 px-4 text-left">Responsable</th>
@@ -497,6 +498,7 @@ export default function FinanceERPPage() {
                                         return (
                                             <tr key={m.id} className="border-b border-border/20 hover:bg-muted/10 transition-colors">
                                                 <td className="py-3 px-4 text-xs font-mono">{new Date(m.created_at).toLocaleString('es-CO', { timeZone: timezone, day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
+                                                <td className="py-3 px-4 text-xs text-muted-foreground">{locationsList.find(l => l.id === m.location_id)?.name || 'Sede'}</td>
                                                 <td className="py-3 px-4 font-medium">{m.account?.name}</td>
                                                 <td className="py-3 px-4 text-muted-foreground">{m.description}</td>
                                                 <td className="py-3 px-4 text-xs italic">{m.creator?.first_name || 'Sistema'}</td>
@@ -528,8 +530,11 @@ export default function FinanceERPPage() {
                         {accounts.map(acc => (
                             <Card key={acc.id} className="border-border/50 bg-card/80 overflow-hidden group hover:border-brand/40 transition-border">
                                 <div className={`h-1 w-full ${acc.type === 'cash' ? 'bg-green-500' : 'bg-blue-500'}`} />
-                                <CardHeader className="py-3"><CardTitle className="text-sm font-medium text-muted-foreground">{acc.name}</CardTitle></CardHeader>
-                                <CardContent><div className="text-2xl font-mono font-bold tracking-tighter">{format_currency(acc.balance)}</div></CardContent>
+                                <CardHeader className="py-3 pb-0">
+                                    <CardTitle className="text-sm font-medium text-muted-foreground">{acc.name}</CardTitle>
+                                    <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1"><MapPin className="w-3 h-3"/> {locationsList.find(l => l.id === acc.location_id)?.name}</p>
+                                </CardHeader>
+                                <CardContent className="pt-2"><div className="text-2xl font-mono font-bold tracking-tighter">{format_currency(acc.balance)}</div></CardContent>
                             </Card>
                         ))}
                     </div>
@@ -550,11 +555,17 @@ export default function FinanceERPPage() {
                     <Card className="border-border/50 bg-card/80"><CardContent className="p-0 overflow-x-auto">
                         <table className="w-full text-sm">
                             <thead className="bg-muted/10 border-b border-border/50"><tr className="text-muted-foreground font-medium">
-                                <td className="py-3 px-4">Fecha</td><td className="py-3 px-4">Categoría</td><td className="py-3 px-4">Descripción</td><td className="py-3 px-4">Cuenta</td><td className="py-3 px-4 text-right">Valor</td>
+                                <td className="py-3 px-4">Fecha</td><td className="py-3 px-4">Sede</td><td className="py-3 px-4">Categoría</td><td className="py-3 px-4">Descripción</td><td className="py-3 px-4">Cuenta</td><td className="py-3 px-4 text-right">Valor</td>
                             </tr></thead>
                             <tbody>
                                 {expenses.map(e => (
-                                    <tr key={e.id} className="border-b border-border/20"><td className="py-3 px-4">{new Date(e.created_at).toLocaleDateString()}</td><td className="py-3 px-4"><Badge variant="secondary">{e.category}</Badge></td><td className="py-3 px-4">{e.description}</td><td className="py-3 px-4">{e.account?.name}</td><td className="py-3 px-4 text-right text-red-500 font-bold">{format_currency(e.amount)}</td></tr>
+                                    <tr key={e.id} className="border-b border-border/20">
+                                        <td className="py-3 px-4">{new Date(e.created_at).toLocaleDateString()}</td>
+                                        <td className="py-3 px-4 text-xs text-muted-foreground">{locationsList.find(l => l.id === e.location_id)?.name || 'Sede'}</td>
+                                        <td className="py-3 px-4"><Badge variant="secondary">{e.category}</Badge></td>
+                                        <td className="py-3 px-4">{e.description}</td><td className="py-3 px-4">{e.account?.name}</td>
+                                        <td className="py-3 px-4 text-right text-red-500 font-bold">{format_currency(e.amount)}</td>
+                                    </tr>
                                 ))}
                             </tbody>
                         </table>
@@ -576,11 +587,12 @@ export default function FinanceERPPage() {
                     <Card className="border-border/50 bg-card/80"><CardContent className="p-0 overflow-x-auto">
                         <table className="w-full text-sm">
                             <thead className="bg-muted/10 border-b border-border/50"><tr className="text-muted-foreground font-medium">
-                                <td className="py-3 px-4">Profesional</td><td className="py-3 px-4 text-right">Acumulado</td><td className="py-3 px-4 text-right">Comisión Neta</td><td className="py-3 px-4 text-right">Descuentos</td>
+                                <td className="py-3 px-4">Sede</td><td className="py-3 px-4">Profesional</td><td className="py-3 px-4 text-right">Acumulado</td><td className="py-3 px-4 text-right">Comisión Neta</td><td className="py-3 px-4 text-right">Descuentos</td>
                             </tr></thead>
                             <tbody>
                                 {professionals.map((p, i) => (
                                     <tr key={i} className="border-b border-border/20">
+                                        <td className="py-3 px-4 text-xs text-muted-foreground">{locationsList.find(l => l.id === p.location_id)?.name || 'Sede'}</td>
                                         <td className="py-3 px-4">{p.profile?.first_name} {p.profile?.last_name}</td>
                                         <td className="py-3 px-4 text-right">{format_currency(p.gross_income)}</td>
                                         <td className="py-3 px-4 text-right text-brand font-bold">{format_currency(p.commission_earned)}</td>
