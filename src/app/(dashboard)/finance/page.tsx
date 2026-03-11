@@ -17,11 +17,10 @@ import { toast } from 'sonner'
 import { open_cash_register, close_cash_register, transfer_funds, process_payout, create_expense, get_z_report_details } from '@/actions/finance'
 
 export default function FinanceERPPage() {
-    const { user, selectedBusinessId, selectedLocationId, timezone } = useAuthStore()
+    const { user, selectedBusinessId, selectedLocationIds, timezone } = useAuthStore()
     const isSuperAdmin = user?.role === 'super_admin'
     const isAdmin = user?.role === 'admin'
     const filterBusinessId = isSuperAdmin ? selectedBusinessId : user?.business_id
-    const defaultLocationId = user?.location_id || null
 
     const [loading, setLoading] = useState(true)
     const [activeTab, setActiveTab] = useState('pnl')
@@ -62,7 +61,7 @@ export default function FinanceERPPage() {
     const [activeRegId, setActiveRegId] = useState<string | null>(null)
     const [activeLocId, setActiveLocId] = useState<string | null>(null)
 
-    const isGlobalView = selectedLocationId === 'all' || !activeLocId
+    const isGlobalView = selectedLocationIds.length !== 1 || !activeLocId
     const activeLocationName = locationsList.find(l => l.id === activeLocId)?.name || 'Desconocida'
 
     // Printing state
@@ -73,8 +72,7 @@ export default function FinanceERPPage() {
         if (!filterBusinessId) { setLoading(false); return }
         const supabase = createClient()
         
-        let locFilter = selectedLocationId === 'all' ? null : (selectedLocationId || defaultLocationId)
-        
+        let availableLocs = locationsList
         if ((isSuperAdmin || isAdmin) && locationsList.length === 0) {
             const { data: locs } = await supabase.from('locations').select('id, name').eq('business_id', filterBusinessId)
             if (locs) {
@@ -90,22 +88,43 @@ export default function FinanceERPPage() {
                     }
                 }
                 setLocationsList(filteredLocs)
-                if (!locFilter && filteredLocs.length > 0 && selectedLocationId !== 'all') {
-                    locFilter = filteredLocs[0].id
-                }
+                availableLocs = filteredLocs
             }
         }
 
-        if (!locFilter && selectedLocationId !== 'all') { setLoading(false); return }
+        // Determine what to query contextually
+        let queryLocs = selectedLocationIds.length > 0 ? selectedLocationIds : availableLocs.map(l => l.id)
         
-        // If it's all, we still might need activeLocId to clear or stay null
-        setActiveLocId(locFilter)
+        // Active location for operational buttons (transfer, payout)
+        if (selectedLocationIds.length === 1) {
+            setActiveLocId(selectedLocationIds[0])
+        } else {
+            setActiveLocId(null)
+        }
 
-        // Date range filtering for P&L
+        // Setup queries dynamically
         let pnlQuery = supabase.from('v_pnl').select('*').eq('business_id', filterBusinessId)
-        if (locFilter && selectedLocationId !== 'all') pnlQuery = pnlQuery.eq('location_id', locFilter)
+        if (queryLocs.length > 0) pnlQuery = pnlQuery.in('location_id', queryLocs)
         if (startDate) pnlQuery = pnlQuery.gte('date', startDate)
         if (endDate) pnlQuery = pnlQuery.lte('date', endDate)
+
+        let accQuery = supabase.from('accounts').select('*').eq('business_id', filterBusinessId).eq('is_active', true)
+        if (queryLocs.length > 0) accQuery = accQuery.in('location_id', queryLocs)
+
+        let regQuery = supabase.from('v_cash_registers_summary').select('*').eq('business_id', filterBusinessId).order('opened_at', { ascending: false }).limit(20)
+        if (queryLocs.length > 0) regQuery = regQuery.in('location_id', queryLocs)
+
+        let profQuery = supabase.from('v_professional_earnings').select('*, profile:profiles!v_professional_earnings_professional_id_fkey(first_name, last_name)')
+        if (queryLocs.length > 0) profQuery = profQuery.in('location_id', queryLocs)
+
+        let payQuery = supabase.from('payouts').select('*, profile:profiles!payouts_professional_id_fkey(first_name)').eq('business_id', filterBusinessId).order('created_at', { ascending: false }).limit(20)
+        if (queryLocs.length > 0) payQuery = payQuery.in('location_id', queryLocs)
+
+        let expQuery = supabase.from('operating_expenses').select('*, creator:profiles!operating_expenses_created_by_fkey(first_name), account:accounts!operating_expenses_account_id_fkey(name)').eq('business_id', filterBusinessId).order('created_at', { ascending: false }).limit(20)
+        if (queryLocs.length > 0) expQuery = expQuery.in('location_id', queryLocs)
+
+        let movQuery = supabase.from('cash_movements').select('*, creator:profiles!cash_movements_created_by_fkey(first_name), account:accounts(name)').eq('business_id', filterBusinessId).order('created_at', { ascending: false }).limit(100)
+        if (queryLocs.length > 0) movQuery = movQuery.in('location_id', queryLocs)
 
         const [
             { data: resPnl },
@@ -116,13 +135,7 @@ export default function FinanceERPPage() {
             { data: resExp },
             { data: resMov }
         ] = await Promise.all([
-            pnlQuery,
-            locFilter ? supabase.from('accounts').select('*').eq('location_id', locFilter).eq('is_active', true) : Promise.resolve({ data: [] }),
-            locFilter ? supabase.from('v_cash_registers_summary').select('*').eq('location_id', locFilter).order('opened_at', { ascending: false }).limit(20) : Promise.resolve({ data: [] }),
-            locFilter ? supabase.from('v_professional_earnings').select('*, profile:profiles!v_professional_earnings_professional_id_fkey(first_name, last_name)').eq('location_id', locFilter) : Promise.resolve({ data: [] }),
-            locFilter ? supabase.from('payouts').select('*, profile:profiles!payouts_professional_id_fkey(first_name)').eq('location_id', locFilter).order('created_at', { ascending: false }).limit(20) : Promise.resolve({ data: [] }),
-            locFilter ? supabase.from('operating_expenses').select('*, creator:profiles!operating_expenses_created_by_fkey(first_name), account:accounts!operating_expenses_account_id_fkey(name)').eq('location_id', locFilter).order('created_at', { ascending: false }).limit(20) : Promise.resolve({ data: [] }),
-            locFilter ? supabase.from('cash_movements').select('*, creator:profiles!cash_movements_created_by_fkey(first_name), account:accounts(name)').eq('location_id', locFilter).order('created_at', { ascending: false }).limit(100) : Promise.resolve({ data: [] })
+            pnlQuery, accQuery, regQuery, profQuery, payQuery, expQuery, movQuery
         ])
 
         if (resPnl) setPnl(resPnl)
@@ -140,7 +153,7 @@ export default function FinanceERPPage() {
         setLoading(false)
     }
 
-    useEffect(() => { setLoading(true); fetchData() }, [filterBusinessId, startDate, endDate, selectedLocationId])
+    useEffect(() => { setLoading(true); fetchData() }, [filterBusinessId, startDate, endDate, selectedLocationIds])
 
     const handleTransfer = async () => {
         if (isGlobalView) return toast.error('Debes seleccionar una sede física específica.')

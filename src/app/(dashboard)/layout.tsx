@@ -8,8 +8,10 @@ import { createClient } from '@/lib/supabase/client'
 import { useAuthStore, useFeatureFlagsStore } from '@/stores'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { MultiSelect } from '@/components/ui/multi-select'
 import { Building2, MapPin } from 'lucide-react'
 import { UserRole } from '@/lib/constants'
+import { cn } from '@/lib/utils'
 
 interface FilterOption {
     id: string
@@ -21,7 +23,7 @@ export default function DashboardLayout({
 }: {
     children: React.ReactNode
 }) {
-    const { setUser, setBusiness, setLocation, setLoading, isLoading, user, selectedBusinessId, setSelectedBusinessId, selectedLocationId, setSelectedLocationId } = useAuthStore()
+    const { setUser, setBusiness, setLocation, setLoading, isLoading, user, selectedBusinessId, setSelectedBusinessId, selectedLocationIds, setSelectedLocationIds } = useAuthStore()
     const { setFlags } = useFeatureFlagsStore()
     const [ready, setReady] = useState(false)
     const [businessOptions, setBusinessOptions] = useState<FilterOption[]>([])
@@ -88,7 +90,7 @@ export default function DashboardLayout({
                     setSelectedBusinessId(profile.business_id)
                 } else if ((profile.role === 'professional' || profile.role === 'client') && profile.business_id) {
                     setSelectedBusinessId(profile.business_id)
-                    if (profile.location_id) setSelectedLocationId(profile.location_id)
+                    if (profile.location_id) setSelectedLocationIds([profile.location_id])
                 }
 
                 // Load initial businesses for super admin
@@ -107,7 +109,7 @@ export default function DashboardLayout({
         }
 
         loadUserData()
-    }, [setUser, setBusiness, setLocation, setLoading, setFlags, setSelectedBusinessId, setSelectedLocationId])
+    }, [setUser, setBusiness, setLocation, setLoading, setFlags, setSelectedBusinessId, setSelectedLocationIds])
 
     // When super admin changes business, reload feature flags
     useEffect(() => {
@@ -132,9 +134,10 @@ export default function DashboardLayout({
             let query = supabase.from('locations').select('id, name').eq('is_active', true)
             
             // Only refine if not 'all' for super_admin. Admins are automatically scoped via RLS.
-            if (user.role === 'super_admin' && selectedBusinessId !== 'all') {
-                query = query.eq('business_id', selectedBusinessId)
-            } else if (user.role === 'super_admin' && selectedBusinessId === 'all') {
+            const cleanBusinessId = selectedBusinessId.replace(/['"]/g, '')
+            if (user.role === 'super_admin' && cleanBusinessId !== 'all') {
+                query = query.eq('business_id', cleanBusinessId)
+            } else if (user.role === 'super_admin' && cleanBusinessId === 'all') {
                 // Return no locations if no business is selected by super admin
                 setLocationOptions([])
                 return
@@ -195,12 +198,16 @@ export default function DashboardLayout({
                     {/* Global Business Selector — Super Admin only */}
                     {isSuperAdmin && businessOptions.length > 0 && (
                         <Select
-                            value={selectedBusinessId}
+                            value={selectedBusinessId.replace(/['"]/g, '')}
                             onValueChange={(v) => setSelectedBusinessId(v || 'all')}
                         >
                             <SelectTrigger className="w-[200px] border-border/50 bg-card/80 backdrop-blur-sm">
                                 <Building2 className="w-4 h-4 mr-2 text-violet-500" />
-                                <SelectValue placeholder="Seleccionar negocio" />
+                                <SelectValue placeholder="Seleccionar negocio">
+                                    {selectedBusinessId === 'all' 
+                                        ? '🌐 Todos los negocios' 
+                                        : businessOptions.find(b => b.id === selectedBusinessId.replace(/['"]/g, ''))?.name || 'Cargando...'}
+                                </SelectValue>
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="all">🌐 Todos los negocios</SelectItem>
@@ -215,24 +222,16 @@ export default function DashboardLayout({
 
                     {/* Global Location Selector — Super Admin and Admin only */}
                     {canSeeFilters && (
-                        <Select
-                            value={selectedLocationId}
-                            onValueChange={(v) => setSelectedLocationId(v || 'all')}
-                            disabled={isSuperAdmin && selectedBusinessId === 'all'}
-                        >
-                            <SelectTrigger className="w-[200px] border-border/50 bg-card/80 backdrop-blur-sm">
-                                <MapPin className="w-4 h-4 mr-2 text-emerald-500" />
-                                <SelectValue placeholder={isSuperAdmin && selectedBusinessId === 'all' ? 'Selecciona negocio' : 'Selecciona sede'} />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">📍 Todas las Sedes</SelectItem>
-                                {locationOptions.map((loc) => (
-                                    <SelectItem key={loc.id} value={loc.id}>
-                                        {loc.name}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                        <div className={cn("w-[240px]", isSuperAdmin && selectedBusinessId === 'all' ? "opacity-50 pointer-events-none" : "")}>
+                            <MultiSelect
+                                options={locationOptions.map(l => ({ label: l.name, value: l.id }))}
+                                selected={selectedLocationIds}
+                                onChange={setSelectedLocationIds}
+                                placeholder={isSuperAdmin && selectedBusinessId === 'all' ? "Selecciona negocio primero" : "Todas las Sedes"}
+                                icon={<MapPin className="w-4 h-4 mr-0 text-emerald-500" />}
+                                className="border-border/50 bg-card/80 backdrop-blur-sm"
+                            />
+                        </div>
                     )}
                 </header>
                 <main className="flex-1 p-4 md:p-6 lg:p-8">

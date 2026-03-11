@@ -14,13 +14,13 @@ interface AuthState {
     timezone: string
     isLoading: boolean
     selectedBusinessId: string | 'all'
-    selectedLocationId: string | 'all'
+    selectedLocationIds: string[]
     setUser: (user: Profile | null) => void
     setBusiness: (business: Business | null) => void
     setLocation: (location: Location | null) => void
     setLoading: (loading: boolean) => void
     setSelectedBusinessId: (id: string | 'all') => void
-    setSelectedLocationId: (id: string | 'all') => void
+    setSelectedLocationIds: (ids: string[]) => void
     reset: () => void
 }
 
@@ -31,7 +31,8 @@ export const useAuthStore = create<AuthState>((set) => ({
     timezone: DEFAULT_TIMEZONE,
     isLoading: true,
     selectedBusinessId: typeof window !== 'undefined' ? (localStorage.getItem('selectedBusinessId') || 'all') : 'all',
-    selectedLocationId: typeof window !== 'undefined' ? (localStorage.getItem('selectedLocationId') || 'all') : 'all',
+    selectedLocationIds: typeof window !== 'undefined' ? 
+        (localStorage.getItem('selectedLocationIds') ? JSON.parse(localStorage.getItem('selectedLocationIds') as string) : []) : [],
     setUser: (user) => set({ user }),
     setBusiness: (business) => set({
         business,
@@ -47,26 +48,22 @@ export const useAuthStore = create<AuthState>((set) => ({
                 localStorage.removeItem('selectedBusinessId')
             }
             // Cascading reset
-            localStorage.setItem('selectedLocationId', 'all')
+            localStorage.setItem('selectedLocationIds', JSON.stringify([]))
         }
-        set({ selectedBusinessId, selectedLocationId: 'all' })
+        set({ selectedBusinessId, selectedLocationIds: [] })
     },
-    setSelectedLocationId: (selectedLocationId) => {
+    setSelectedLocationIds: (selectedLocationIds) => {
         if (typeof window !== 'undefined') {
-            if (selectedLocationId && selectedLocationId !== 'all') {
-                localStorage.setItem('selectedLocationId', selectedLocationId)
-            } else {
-                localStorage.setItem('selectedLocationId', 'all')
-            }
+            localStorage.setItem('selectedLocationIds', JSON.stringify(selectedLocationIds))
         }
-        set({ selectedLocationId })
+        set({ selectedLocationIds })
     },
     reset: () => {
         if (typeof window !== 'undefined') {
             localStorage.removeItem('selectedBusinessId')
-            localStorage.removeItem('selectedLocationId')
+            localStorage.removeItem('selectedLocationIds')
         }
-        set({ user: null, business: null, location: null, timezone: DEFAULT_TIMEZONE, isLoading: false, selectedBusinessId: 'all', selectedLocationId: 'all' })
+        set({ user: null, business: null, location: null, timezone: DEFAULT_TIMEZONE, isLoading: false, selectedBusinessId: 'all', selectedLocationIds: [] })
     },
 }))
 
