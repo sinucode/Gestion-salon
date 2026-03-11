@@ -614,12 +614,13 @@ export default function FinanceERPPage() {
                     <Card className="border-border/50 bg-card/80"><CardContent className="p-0 overflow-x-auto">
                         <table className="w-full text-sm">
                             <thead className="bg-muted/10 border-b border-border/50"><tr className="text-muted-foreground font-medium">
-                                <td className="py-3 px-4">Estado</td><td className="py-3 px-4">Apertura</td><td className="py-3 px-4">Cierre</td><td className="py-3 px-4 text-right">Ingresos (+)</td><td className="py-3 px-4 text-right">Gastos (-)</td><td className="py-3 px-4 text-right font-bold">Total Caja</td><td className="py-3 px-4 text-center">Acciones</td>
+                                <td className="py-3 px-4">Estado</td><td className="py-3 px-4">Sede</td><td className="py-3 px-4">Apertura</td><td className="py-3 px-4">Cierre</td><td className="py-3 px-4 text-right">Ingresos (+)</td><td className="py-3 px-4 text-right">Gastos (-)</td><td className="py-3 px-4 text-right font-bold">Total Caja</td><td className="py-3 px-4 text-center">Acciones</td>
                             </tr></thead>
                             <tbody>
                                 {registers.map(r => (
                                     <tr key={r.id} className="border-b border-border/20">
                                         <td className="py-3 px-4"><Badge variant={r.status==='open'?'default':'secondary'}>{r.status}</Badge></td>
+                                        <td className="py-3 px-4 font-medium">{locationsList.find(l => l.id === r.location_id)?.name || 'Sede'}</td>
                                         <td className="py-3 px-4 text-xs">{new Date(r.opened_at).toLocaleString('es-CO', { timeZone: timezone, dateStyle: 'short', timeStyle: 'short' })}<br/><span className="text-muted-foreground">{r.opener_first_name}</span></td>
                                         <td className="py-3 px-4 text-xs">{r.status==='closed' ? new Date(r.closed_at).toLocaleString('es-CO', { timeZone: timezone, dateStyle: 'short', timeStyle: 'short' }) : 'En Progreso'}<br/><span className="text-muted-foreground">{r.status==='closed' ? r.closer_first_name : ''}</span></td>
                                         <td className="py-3 px-4 text-right font-medium text-green-500">+{format_currency(r.total_incomes)}</td>
