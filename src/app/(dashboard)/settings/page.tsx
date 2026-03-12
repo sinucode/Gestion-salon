@@ -277,7 +277,7 @@ export default function SettingsPage() {
                 </Card>
 
                 {/* Appearance Card */}
-                <Card className="border-border/50 bg-card/80 backdrop-blur-sm md:col-span-2">
+                <Card className="border-border/50 bg-card/80 backdrop-blur-sm md:col-span-2 overflow-visible">
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2 text-lg">
                             <Monitor className="w-5 h-5 text-brand" />
@@ -291,31 +291,43 @@ export default function SettingsPage() {
                         {!mounted ? (
                             <div className="h-11 w-full bg-muted/50 rounded-lg animate-pulse" />
                         ) : (
-                            <div className="flex items-center gap-4">
-                                <Button
-                                    variant={theme === 'light' ? 'default' : 'outline'}
+                            <div className="grid grid-cols-3 gap-3">
+                                <button
+                                    type="button"
                                     onClick={() => setTheme('light')}
-                                    className="w-full gap-2"
+                                    className={`flex flex-col items-center gap-2 rounded-xl border-2 p-4 transition-all duration-200 cursor-pointer ${
+                                        theme === 'light'
+                                            ? 'border-primary bg-primary/10 shadow-md ring-2 ring-primary/20'
+                                            : 'border-border hover:border-primary/40 hover:bg-muted/50'
+                                    }`}
                                 >
-                                    <Sun className="w-4 h-4" />
-                                    Claro
-                                </Button>
-                                <Button
-                                    variant={theme === 'dark' ? 'default' : 'outline'}
+                                    <Sun className={`w-6 h-6 ${theme === 'light' ? 'text-primary' : 'text-muted-foreground'}`} />
+                                    <span className={`text-sm font-semibold ${theme === 'light' ? 'text-primary' : 'text-muted-foreground'}`}>Claro</span>
+                                </button>
+                                <button
+                                    type="button"
                                     onClick={() => setTheme('dark')}
-                                    className="w-full gap-2"
+                                    className={`flex flex-col items-center gap-2 rounded-xl border-2 p-4 transition-all duration-200 cursor-pointer ${
+                                        theme === 'dark'
+                                            ? 'border-primary bg-primary/10 shadow-md ring-2 ring-primary/20'
+                                            : 'border-border hover:border-primary/40 hover:bg-muted/50'
+                                    }`}
                                 >
-                                    <Moon className="w-4 h-4" />
-                                    Oscuro
-                                </Button>
-                                <Button
-                                    variant={theme === 'system' ? 'default' : 'outline'}
+                                    <Moon className={`w-6 h-6 ${theme === 'dark' ? 'text-primary' : 'text-muted-foreground'}`} />
+                                    <span className={`text-sm font-semibold ${theme === 'dark' ? 'text-primary' : 'text-muted-foreground'}`}>Oscuro</span>
+                                </button>
+                                <button
+                                    type="button"
                                     onClick={() => setTheme('system')}
-                                    className="w-full gap-2"
+                                    className={`flex flex-col items-center gap-2 rounded-xl border-2 p-4 transition-all duration-200 cursor-pointer ${
+                                        theme === 'system'
+                                            ? 'border-primary bg-primary/10 shadow-md ring-2 ring-primary/20'
+                                            : 'border-border hover:border-primary/40 hover:bg-muted/50'
+                                    }`}
                                 >
-                                    <Monitor className="w-4 h-4" />
-                                    Sistema
-                                </Button>
+                                    <Monitor className={`w-6 h-6 ${theme === 'system' ? 'text-primary' : 'text-muted-foreground'}`} />
+                                    <span className={`text-sm font-semibold ${theme === 'system' ? 'text-primary' : 'text-muted-foreground'}`}>Sistema</span>
+                                </button>
                             </div>
                         )}
                     </CardContent>
