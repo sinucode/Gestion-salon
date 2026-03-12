@@ -15,6 +15,7 @@ import { useAuthStore } from '@/stores'
 import { toast } from 'sonner'
 import { format_currency } from '@/lib/utils/currency'
 import { delete_product, restore_product } from '@/actions/inventory'
+import { cn } from '@/lib/utils'
 
 interface ProductRow { id: string; name: string; sku: string | null; unit: string; cost_price: number; sell_price: number; stock_qty: number; min_stock: number; is_active: boolean }
 
@@ -105,49 +106,109 @@ export default function InventoryPage() {
             </div>
 
             {products.length === 0 ? (
-                <Card className="border-border/50 bg-card/80"><CardContent className="py-12 text-center"><Package className="w-12 h-12 mx-auto text-muted-foreground/30 mb-4" /><p className="text-muted-foreground">No hay productos.</p></CardContent></Card>
-            ) : (
-                <Card className="border-border/50 bg-card/80 backdrop-blur-sm">
-                    <CardContent className="p-0">
-                        <table className="w-full text-sm">
-                            <thead><tr className="border-b border-border/50">
-                                <th className="text-left py-3 px-4 font-medium text-muted-foreground">Producto</th>
-                                <th className="text-left py-3 px-4 font-medium text-muted-foreground">SKU</th>
-                                <th className="text-center py-3 px-4 font-medium text-muted-foreground">Unidad</th>
-                                <th className="text-right py-3 px-4 font-medium text-muted-foreground">Costo</th>
-                                <th className="text-right py-3 px-4 font-medium text-muted-foreground">Venta</th>
-                                <th className="text-center py-3 px-4 font-medium text-muted-foreground">Stock</th>
-                                <th className="text-center py-3 px-4 font-medium text-muted-foreground">Acciones</th>
-                            </tr></thead>
-                            <tbody>{products.map(p => {
-                                const isLow = p.stock_qty <= p.min_stock
-                                return (
-                                    <tr key={p.id} className={`border-b border-border/20 transition-colors ${p.is_active ? 'hover:bg-muted/30' : 'opacity-60 grayscale-[0.5]'}`}>
-                                        <td className="py-3 px-4 font-medium">{p.name}</td>
-                                        <td className="py-3 px-4 text-muted-foreground font-mono text-xs">{p.sku || '—'}</td>
-                                        <td className="py-3 px-4 text-center">{p.unit}</td>
-                                        <td className="py-3 px-4 text-right">{format_currency(p.cost_price)}</td>
-                                        <td className="py-3 px-4 text-right font-semibold">{format_currency(p.sell_price)}</td>
-                                        <td className="py-3 px-4 text-center">
-                                            <Badge variant={isLow ? 'destructive' : 'secondary'} className="text-xs">
-                                                {isLow && <AlertTriangle className="w-3 h-3 mr-1" />}
-                                                {p.stock_qty} / {p.min_stock}
-                                            </Badge>
-                                        </td>
-                                        <td className="py-3 px-4 text-center">
-                                            <Button variant="ghost" size="sm" onClick={() => openEdit(p)}><Pencil className="w-3 h-3" /></Button>
-                                            {p.is_active ? (
-                                                <Button variant="ghost" size="sm" className="text-destructive" onClick={() => { setTargetId(p.id); setDeleteOpen(true) }}><Trash2 className="w-3 h-3" /></Button>
-                                            ) : (
-                                                <Button variant="ghost" size="sm" className="text-brand" onClick={() => { setTargetId(p.id); setRestoreOpen(true) }}><Loader2 className="w-3 h-3" /></Button>
-                                            )}
-                                        </td>
-                                    </tr>
-                                )
-                            })}</tbody>
-                        </table>
+                <Card className="border-border/50 bg-card/80">
+                    <CardContent className="py-12 text-center">
+                        <Package className="w-12 h-12 mx-auto text-muted-foreground/30 mb-4" />
+                        <p className="text-muted-foreground">No hay productos.</p>
                     </CardContent>
                 </Card>
+            ) : (
+                <>
+                    {/* Desktop View Table */}
+                    <Card className="border-border/50 bg-card/80 backdrop-blur-sm hidden md:block overflow-hidden">
+                        <CardContent className="p-0">
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm">
+                                    <thead><tr className="border-b border-border/50">
+                                        <th className="text-left py-4 px-6 font-semibold text-muted-foreground uppercase tracking-wider text-[11px]">Producto</th>
+                                        <th className="text-left py-4 px-6 font-semibold text-muted-foreground uppercase tracking-wider text-[11px]">SKU</th>
+                                        <th className="text-center py-4 px-6 font-semibold text-muted-foreground uppercase tracking-wider text-[11px]">Unidad</th>
+                                        <th className="text-right py-4 px-6 font-semibold text-muted-foreground uppercase tracking-wider text-[11px]">Costo</th>
+                                        <th className="text-right py-4 px-6 font-semibold text-muted-foreground uppercase tracking-wider text-[11px]">Venta</th>
+                                        <th className="text-center py-4 px-6 font-semibold text-muted-foreground uppercase tracking-wider text-[11px]">Stock</th>
+                                        <th className="text-right py-4 px-6 font-semibold text-muted-foreground uppercase tracking-wider text-[11px]">Acciones</th>
+                                    </tr></thead>
+                                    <tbody className="divide-y divide-border/20">{products.map(p => {
+                                        const isLow = p.stock_qty <= p.min_stock
+                                        return (
+                                            <tr key={p.id} className={`transition-colors h-16 ${p.is_active ? 'hover:bg-muted/30' : 'opacity-60 grayscale-[0.5]'}`}>
+                                                <td className="py-3 px-6 font-bold text-foreground">{p.name}</td>
+                                                <td className="py-3 px-6 text-muted-foreground font-mono text-xs">{p.sku || '—'}</td>
+                                                <td className="py-3 px-6 text-center">{p.unit}</td>
+                                                <td className="py-3 px-6 text-right">{format_currency(p.cost_price)}</td>
+                                                <td className="py-3 px-6 text-right font-bold text-primary">{format_currency(p.sell_price)}</td>
+                                                <td className="py-3 px-6 text-center">
+                                                    <Badge variant={isLow ? 'destructive' : 'secondary'} className="text-[10px] uppercase font-bold tracking-wider rounded-full px-2">
+                                                        {isLow && <AlertTriangle className="w-2.5 h-2.5 mr-1" />}
+                                                        {p.stock_qty} / {p.min_stock}
+                                                    </Badge>
+                                                </td>
+                                                <td className="py-3 px-6 text-right space-x-1">
+                                                    <Button variant="ghost" size="icon-sm" className="hover:bg-brand/10 hover:text-brand" onClick={() => openEdit(p)}><Pencil className="w-3.5 h-3.5" /></Button>
+                                                    {p.is_active ? (
+                                                        <Button variant="ghost" size="icon-sm" className="text-destructive hover:bg-destructive/10" onClick={() => { setTargetId(p.id); setDeleteOpen(true) }}><Trash2 className="w-3.5 h-3.5" /></Button>
+                                                    ) : (
+                                                        <Button variant="ghost" size="icon-sm" className="text-brand hover:bg-brand/10" onClick={() => { setTargetId(p.id); setRestoreOpen(true) }}><Loader2 className="w-3.5 h-3.5 animate-spin" /></Button>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        )
+                                    })}</tbody>
+                                </table>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* Mobile View Cards */}
+                    <div className="grid grid-cols-1 gap-4 md:hidden">
+                        {products.map(p => {
+                            const isLow = p.stock_qty <= p.min_stock
+                            return (
+                                <Card key={p.id} className={cn("border-border/50 bg-card/80 backdrop-blur-sm overflow-hidden", !p.is_active && "opacity-60 grayscale-[0.3]")}>
+                                    <CardContent className="p-5 space-y-4">
+                                        <div className="flex justify-between items-start">
+                                            <div>
+                                                <h3 className="font-bold text-lg leading-none">{p.name}</h3>
+                                                <p className="text-[10px] text-muted-foreground font-mono mt-1">{p.sku || 'Sin SKU'}</p>
+                                            </div>
+                                            <Badge variant={isLow ? 'destructive' : 'secondary'} className="rounded-full animate-in fade-in zoom-in duration-300">
+                                                {isLow && <AlertTriangle className="w-3 h-3 mr-1" />}
+                                                Stock: {p.stock_qty}
+                                            </Badge>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2 text-sm pt-2">
+                                            <div className="flex flex-col gap-1">
+                                                <span className="text-[10px] uppercase text-muted-foreground tracking-widest font-bold">Costo</span>
+                                                <span className="font-medium">{format_currency(p.cost_price)}</span>
+                                            </div>
+                                            <div className="flex flex-col gap-1">
+                                                <span className="text-[10px] uppercase text-muted-foreground tracking-widest font-bold">Venta</span>
+                                                <span className="font-bold text-primary">{format_currency(p.sell_price)}</span>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center justify-between pt-4 border-t border-border/30">
+                                            <span className="text-xs text-muted-foreground italic">Unidad: {p.unit}</span>
+                                            <div className="flex gap-2">
+                                                <Button variant="outline" size="sm" className="h-9 px-4 rounded-full" onClick={() => openEdit(p)}>
+                                                    <Pencil className="w-3.5 h-3.5 mr-2" /> Editar
+                                                </Button>
+                                                {p.is_active ? (
+                                                    <Button variant="ghost" size="icon-sm" className="h-9 w-9 text-destructive rounded-full hover:bg-destructive/10" onClick={() => { setTargetId(p.id); setDeleteOpen(true) }}>
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </Button>
+                                                ) : (
+                                                    <Button variant="ghost" size="icon-sm" className="h-9 w-9 text-brand rounded-full hover:bg-brand/10" onClick={() => { setTargetId(p.id); setRestoreOpen(true) }}>
+                                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                                    </Button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            )
+                        })}
+                    </div>
+                </>
             )}
 
             <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>

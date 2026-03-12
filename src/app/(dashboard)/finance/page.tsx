@@ -477,49 +477,98 @@ export default function FinanceERPPage() {
 
                 {/* ===== LEDGER / LIBRO MAYOR ===== */}
                 <TabsContent value="ledger" className="space-y-4 pt-4">
-                    <div className="flex justify-between items-center">
-                        <h3 className="font-semibold text-lg flex items-center gap-2"><History className="w-5 h-5" /> Libro Mayor Central (Libro de Caja)</h3>
-                        <div className="text-xs text-muted-foreground bg-muted/50 px-2 py-1 rounded">Visualizando últimos 100 movimientos inmutables</div>
-                    </div>
-                    <Card className="border-border/50 bg-card/80 backdrop-blur-sm"><CardContent className="p-0 overflow-hidden">
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
-                                <thead className="bg-muted/30"><tr className="text-muted-foreground font-medium border-b border-border/50">
-                                    <th className="py-3 px-4 text-left">Fecha/Hora</th>
-                                    <th className="py-3 px-4 text-left">Sede</th>
-                                    <th className="py-3 px-4 text-left">Cuenta</th>
-                                    <th className="py-3 px-4 text-left">Concepto</th>
-                                    <th className="py-3 px-4 text-left">Responsable</th>
-                                    <th className="py-3 px-4 text-right">Valor</th>
-                                </tr></thead>
-                                <tbody>
-                                    {movements.map(m => {
-                                        const isIngreso = ['income', 'direct_sale', 'transfer_in', 'opening_balance', 'adjustment_in'].includes(m.type)
-                                        return (
-                                            <tr key={m.id} className="border-b border-border/20 hover:bg-muted/10 transition-colors">
-                                                <td className="py-3 px-4 text-xs font-mono">{new Date(m.created_at).toLocaleString('es-CO', { timeZone: timezone, day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
-                                                <td className="py-3 px-4 text-xs text-muted-foreground">{locationsList.find(l => l.id === m.location_id)?.name || 'Sede'}</td>
-                                                <td className="py-3 px-4 font-medium">{m.account?.name}</td>
-                                                <td className="py-3 px-4 text-muted-foreground">{m.description}</td>
-                                                <td className="py-3 px-4 text-xs italic">{m.creator?.first_name || 'Sistema'}</td>
-                                                <td className={`py-3 px-4 text-right font-bold ${isIngreso ? 'text-green-500' : 'text-red-500'}`}>
-                                                    {isIngreso ? '+' : '-'}{format_currency(m.amount)}
-                                                </td>
-                                            </tr>
-                                        )
-                                    })}
-                                </tbody>
-                                <tfoot className="bg-muted/30 font-bold border-t border-border/50">
-                                    <tr>
-                                        <td colSpan={5} className="py-3 px-4 text-right uppercase text-xs text-muted-foreground">Flujo Neto Total:</td>
-                                        <td className={`py-3 px-4 text-right ${movements.reduce((sum,m)=>sum+(['income', 'direct_sale', 'transfer_in', 'opening_balance', 'adjustment_in'].includes(m.type)?m.amount:-m.amount),0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                            {format_currency(movements.reduce((sum,m)=>sum+(['income', 'direct_sale', 'transfer_in', 'opening_balance', 'adjustment_in'].includes(m.type)?m.amount:-m.amount),0))}
-                                        </td>
-                                    </tr>
-                                </tfoot>
-                            </table>
+                    <div className="flex justify-between items-center group">
+                        <div>
+                            <h3 className="font-bold text-xl flex items-center gap-2 tracking-tight">
+                                <History className="w-5 h-5 text-brand" /> Libro Mayor Central
+                            </h3>
+                            <p className="text-xs text-muted-foreground mt-0.5">Auditoría inmutable de movimientos financieros</p>
                         </div>
-                    </CardContent></Card>
+                        <Badge variant="secondary" className="text-[10px] font-bold uppercase tracking-widest bg-muted/50">Últimos 100 registros</Badge>
+                    </div>
+
+                    {/* Desktop Ledger Table */}
+                    <Card className="border-border/50 bg-card/80 backdrop-blur-sm hidden md:block overflow-hidden">
+                        <CardContent className="p-0">
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm">
+                                    <thead>
+                                        <tr className="text-muted-foreground font-semibold border-b border-border/50 bg-muted/20">
+                                            <th className="py-4 px-6 text-left uppercase tracking-wider text-[11px]">Fecha/Hora</th>
+                                            <th className="py-4 px-6 text-left uppercase tracking-wider text-[11px]">Sede</th>
+                                            <th className="py-4 px-6 text-left uppercase tracking-wider text-[11px]">Cuenta</th>
+                                            <th className="py-4 px-6 text-left uppercase tracking-wider text-[11px]">Concepto</th>
+                                            <th className="py-4 px-6 text-left uppercase tracking-wider text-[11px]">Responsable</th>
+                                            <th className="py-4 px-6 text-right uppercase tracking-wider text-[11px]">Valor</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-border/10 font-medium">
+                                        {movements.map(m => {
+                                            const isIngreso = ['income', 'direct_sale', 'transfer_in', 'opening_balance', 'adjustment_in'].includes(m.type)
+                                            return (
+                                                <tr key={m.id} className="hover:bg-muted/30 transition-colors h-14">
+                                                    <td className="py-3 px-6 text-xs font-mono text-muted-foreground">
+                                                        {new Date(m.created_at).toLocaleString('es-CO', { timeZone: timezone, day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                                    </td>
+                                                    <td className="py-3 px-6 text-xs">
+                                                        <span className="bg-muted px-2 py-0.5 rounded-full text-muted-foreground">
+                                                            {locationsList.find(l => l.id === m.location_id)?.name || 'Sede'}
+                                                        </span>
+                                                    </td>
+                                                    <td className="py-3 px-6 font-bold text-foreground">{m.account?.name}</td>
+                                                    <td className="py-3 px-6 text-muted-foreground max-w-xs truncate">{m.description}</td>
+                                                    <td className="py-3 px-6 text-xs italic text-muted-foreground/80">{m.creator?.first_name || 'Sistema'}</td>
+                                                    <td className={`py-3 px-6 text-right font-extrabold tabular-nums ${isIngreso ? 'text-green-500' : 'text-red-500'}`}>
+                                                        {isIngreso ? '+' : '-'}{format_currency(m.amount)}
+                                                    </td>
+                                                </tr>
+                                            )
+                                        })}
+                                    </tbody>
+                                    <tfoot className="bg-muted/50 font-bold border-t border-border/50">
+                                        <tr>
+                                            <td colSpan={5} className="py-5 px-6 text-right uppercase text-[10px] tracking-[0.2em] text-muted-foreground">Flujo Neto Total:</td>
+                                            <td className={`py-5 px-6 text-right text-lg tabular-nums ${movements.reduce((sum,m)=>sum+(['income', 'direct_sale', 'transfer_in', 'opening_balance', 'adjustment_in'].includes(m.type)?m.amount:-m.amount),0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                                {format_currency(movements.reduce((sum,m)=>sum+(['income', 'direct_sale', 'transfer_in', 'opening_balance', 'adjustment_in'].includes(m.type)?m.amount:-m.amount),0))}
+                                            </td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* Mobile Ledger Cards */}
+                    <div className="grid grid-cols-1 gap-4 md:hidden">
+                        {movements.slice(0, 20).map(m => {
+                            const isIngreso = ['income', 'direct_sale', 'transfer_in', 'opening_balance', 'adjustment_in'].includes(m.type)
+                            return (
+                                <Card key={m.id} className="border-border/50 bg-card/80 backdrop-blur-sm overflow-hidden p-5 space-y-3">
+                                    <div className="flex justify-between items-start">
+                                        <div className="space-y-1">
+                                            <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">
+                                                {new Date(m.created_at).toLocaleString('es-CO', { timeZone: timezone, day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                            </p>
+                                            <h4 className="font-bold text-base leading-none">{m.account?.name}</h4>
+                                            <p className="text-xs text-muted-foreground mt-1">{m.description}</p>
+                                        </div>
+                                        <span className={`text-sm font-black tabular-nums ${isIngreso ? 'text-green-500' : 'text-red-500'}`}>
+                                            {isIngreso ? '+' : '-'}{format_currency(m.amount)}
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between items-center pt-3 border-t border-border/20">
+                                        <Badge variant="outline" className="text-[9px] uppercase tracking-tighter rounded-full border-border/50">
+                                            {locationsList.find(l => l.id === m.location_id)?.name || 'Sede'}
+                                        </Badge>
+                                        <span className="text-[10px] italic text-muted-foreground/60">Por: {m.creator?.first_name || 'Sistema'}</span>
+                                    </div>
+                                </Card>
+                            )
+                        })}
+                        {movements.length > 20 && (
+                            <p className="text-center text-xs text-muted-foreground py-2 italic font-medium">Ver más registros en la versión de escritorio</p>
+                        )}
+                    </div>
                 </TabsContent>
 
                 {/* ===== ACCOUNTS ===== */}

@@ -107,15 +107,16 @@ export function AppSidebar() {
         <Sidebar collapsible="icon" className="border-r border-sidebar-border">
             <SidebarHeader className="p-4">
                 <Link href="/dashboard" className="flex items-center gap-3 group">
-                    <div className="w-9 h-9 rounded-lg gradient-brand-dark flex items-center justify-center shadow-md group-hover:shadow-lg transition-shadow">
-                        <Scissors className="w-5 h-5 text-white" />
+                    <div className="w-9 h-9 rounded-lg gradient-brand-dark flex items-center justify-center shadow-lg group-hover:shadow-brand/20 group-hover:scale-105 transition-all duration-300 ring-1 ring-white/10 relative overflow-hidden">
+                        <div className="absolute inset-0 bg-white/5 group-hover:bg-white/10 transition-colors" />
+                        <Scissors className="w-5 h-5 text-white relative z-10" />
                     </div>
-                    <div className="flex flex-col group-data-[collapsible=icon]:hidden">
-                        <span className="text-sm font-bold text-sidebar-foreground tracking-tight">
+                    <div className="flex flex-col group-data-[collapsible=icon]:hidden translate-y-[1px]">
+                        <span className="text-sm font-extrabold text-sidebar-foreground tracking-tight leading-none">
                             Gestión Salón
                         </span>
-                        <span className="text-[10px] text-sidebar-foreground/50 uppercase tracking-wider">
-                            Sistema Integral
+                        <span className="text-[9px] text-sidebar-foreground/40 uppercase tracking-[0.15em] font-bold mt-1">
+                            Premium System
                         </span>
                     </div>
                 </Link>
@@ -157,18 +158,18 @@ export function AppSidebar() {
                             <DropdownMenuTrigger>
                                 <SidebarMenuButton
                                     size="lg"
-                                    className="w-full hover:bg-sidebar-accent"
+                                    className="w-full hover:bg-sidebar-accent border border-transparent hover:border-sidebar-border/50 transition-all duration-300"
                                 >
-                                    <Avatar className="w-8 h-8 rounded-lg">
+                                    <Avatar className="w-8 h-8 rounded-lg ring-1 ring-sidebar-border/50">
                                         <AvatarFallback className="rounded-lg bg-sidebar-primary text-sidebar-primary-foreground text-xs font-bold">
                                             {initials}
                                         </AvatarFallback>
                                     </Avatar>
                                     <div className="flex flex-col flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
-                                        <span className="truncate font-medium text-sidebar-foreground">
+                                        <span className="truncate font-semibold text-sidebar-foreground">
                                             {user?.first_name} {user?.last_name}
                                         </span>
-                                        <span className="truncate text-xs text-sidebar-foreground/50">
+                                        <span className="truncate text-[10px] text-sidebar-foreground/50 uppercase tracking-wider font-medium">
                                             {user?.role?.replace('_', ' ')}
                                         </span>
                                     </div>
